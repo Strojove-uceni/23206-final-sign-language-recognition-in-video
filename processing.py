@@ -1,129 +1,109 @@
 import pandas as pd
 import numpy as np
+from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
-import itertools
 import cv2
 
 
 class ParquetProcess:
 
-    def euclidean_distance(p1, p2):
-        return np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
-
-    def compute_angle(self, p1, p2, p3):
-        # Vectors
-        a = np.array([p1[0] - p2[0], p1[1] - p2[1]])
-        b = np.array([p3[0] - p2[0], p3[1] - p2[1]])
-        # Dot product and magnitudes
-        dot_product = np.dot(a, b)
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
-        # Prevent division by zero
-        if norm_a == 0 or norm_b == 0:
-            return 0
-        # Angle
-        cos_theta = dot_product / (norm_a * norm_b + 1e-10)  # Adding a small epsilon value
-        angle = np.arccos(np.clip(cos_theta, -1, 1))
-        return angle
-
-    def ReadParquet(self, file_directory):
-        print(f"Reading the parquet file from {file_directory}...")
-        dataframe = pd.read_parquet(file_directory)
-        print("File read successfully!")
+    def read_parquet(self, directory):
+        print(f'Reading file from {directory}')
+        dataframe=pd.read_parquet(directory)
+        print(f'Successfully read file')
         return dataframe
 
-    def CleanParquet(self, dataframe):
-        print("Cleaning the dataframe by replacing NaN values with zeros...")
-        cleaned_dataframe = dataframe.fillna(0)
-        print("Here are the first few rows of the cleaned dataframe:")
-        print(cleaned_dataframe.head())
-        return cleaned_dataframe
 
-    def CalculateDistanceMatrix(self, dataframe, frame_number, selected_landmark_indices):
-        #Filtrace typů
-        hand_rows = dataframe[(dataframe['frame'] == frame_number) & (((dataframe['type'] == 'right_hand') | (dataframe['type'] == 'left_hand')))]
+    def clean_parquet(self, dataframe, replacement=0, show_df=True):
+        print(f'Replacing NaNs with {replacement}')
+        cleaned_df = dataframe.fillna(replacement)
+        print(f'Successfully replaced Nans with {replacement}')
+        if show_df == 1:
+            print(f'Here is few lines from parquet file')
+            print(cleaned_df.head())
+        return cleaned_df
+
+    def extract_landmarks(self, dataframe, frame_number, selected_landmark_indices):
+        hand_rows = dataframe[(dataframe['frame'] == frame_number) & (
+        ((dataframe['type'] == 'right_hand') | (dataframe['type'] == 'left_hand')))]
         face_rows = dataframe[(dataframe['frame'] == frame_number) & (dataframe['type'] == 'face')]
-
-        # Výběr landmarks
         hand_coordinates = hand_rows[['x', 'y', 'z']].values
-
-        # Select landmark coordinates for faces based on specified indices
         face_coordinates = face_rows[face_rows['landmark_index'].isin(selected_landmark_indices)][
             ['x', 'y', 'z']].values
-
         combined_coordinates = np.concatenate((hand_coordinates, face_coordinates), axis=0)
+        return combined_coordinates
 
-        # Calculate the distance matrix using Euclidean distance
-        distance_matrix = np.sqrt(
-            np.sum((combined_coordinates[:, np.newaxis, :] - combined_coordinates[np.newaxis, :, :]) ** 2, axis=-1))
-
-        # Normalize the distance matrix to [0,1]
-        max_value = distance_matrix.max()
-        normalized_matrix = distance_matrix / max_value if max_value > 0 else distance_matrix
-
+    def normalize_matrix(self, matrix):
+        min_val = np.min(matrix)
+        max_val = np.max(matrix)
+        normalized_matrix = (matrix - min_val) / (max_val - min_val)
         return normalized_matrix
 
-    def CalculateAngleMatrix(self, dataframe, frame_number, selected_landmark_indices):
-        hand_rows = dataframe[(dataframe['frame'] == frame_number) & (((dataframe['type'] == 'right_hand') | (dataframe['type'] == 'left_hand')))]
-        face_rows = dataframe[(dataframe['frame'] == frame_number) & (dataframe['type'] == 'face')]
+    def distance(self, coordinates):
+        dist_norm = distance_matrix(coordinates, coordinates)
+        distance_norm = parquet_processor.normalize_matrix(dist_norm)
+        return distance_norm
 
+    def angle_between_vectors(self, v1, v2):
+        # Calculate the dot product and the angle in radians
+        dot_prod = np.dot(v1, v2)
+        norms = np.linalg.norm(v1) * np.linalg.norm(v2)
+        if norms==0:
+            angle=0
+        else:
+            angle = np.arccos(np.clip(dot_prod / norms, -1.0, 1.0))
+        angle_deg = np.degrees(angle)
+        return angle_deg
 
-        hand_coordinates = hand_rows[['x', 'y', 'z']].values
+    def angle_matrix(self, vectors):
+        n = vectors.shape[0]
+        angle_mat = np.zeros((n, n))
 
-        # Select landmark coordinates for faces based on specified indices
-        face_coordinates = face_rows[face_rows['landmark_index'].isin(selected_landmark_indices)][
-            ['x', 'y', 'z']].values
+        for i in range(n):
+            for j in range(i, n):
+                angle = parquet_processor.angle_between_vectors(vectors[i], vectors[j])
+                angle_mat[i, j] = angle
+                angle_mat[j, i] = angle
+        angle_mat = np.nan_to_num(angle_mat, nan=0)
+        angle_mat = parquet_processor.normalize_matrix(angle_mat)
+        return angle_mat
 
-        combined_coordinates = np.concatenate((hand_coordinates, face_coordinates), axis=0)
-        num_landmarks=len(combined_coordinates)
-        angle_matrix = np.zeros((num_landmarks, num_landmarks))
-        for i in range(num_landmarks):
-            for j in range(i + 1, num_landmarks - 1):  # modified range to avoid index error
-                # Compute angle only if the next landmark is different, hence j + 2 check to ensure a triplet
-                if (j + 2) < num_landmarks:
-                    p1 = combined_coordinates[i]
-                    p2 = combined_coordinates[j]
-                    p3 = combined_coordinates[j+1]
-                    angle_matrix[i, j] = self.compute_angle(p1, p2, p3)
-        max_value = angle_matrix.max()
-        normalized_matrix = angle_matrix / max_value if max_value > 0 else angle_matrix
-        return normalized_matrix
-
-    def CalculateThresholdMatrix(self, distance_matrix, threshold=0.05):
-        proximity_matrix = (distance_matrix < threshold).astype(int)
+    def treshold_matrix(self, distance, treshold=0.05):
+        proximity_matrix = (distance < treshold).astype(int)
+        proximity_matrix = parquet_processor.normalize_matrix(proximity_matrix)
         return proximity_matrix
 
-    def AnimateParquet(self,df):
-        unique_frames = sorted(df['frame'].unique())
-        for frame_number in unique_frames:
-            distance_matrix = parquet_processor.CalculateDistanceMatrix(clean_df, frame_number,
-                                                                        selected_landmark_indices)
-            angle_matrix=parquet_processor.CalculateAngleMatrix(clean_df,frame_number,selected_landmark_indices)
-            treshold_matrix=parquet_processor.CalculateThresholdMatrix(distance_matrix)
+    def make_img(self, R, G, B):
+        rgb_img=cv2.merge([R, G, B])
+        rgb_img=cv2.flip(rgb_img, 1)
+        return rgb_img
 
-            dist_img = (255 * (distance_matrix - np.min(distance_matrix)) / (
-                    np.max(distance_matrix) - np.min(distance_matrix))).astype(np.uint8)
-            angle_img = (255 * (angle_matrix - np.min(angle_matrix)) / (
-                    np.max(angle_matrix) - np.min(angle_matrix))).astype(np.uint8)
-            proximity_img = (255 * treshold_matrix).astype(np.uint8)
-
-            rgb_img = cv2.merge([proximity_img, angle_img, dist_img])
-            rgb_img=cv2.flip(rgb_img,1)
+    def animate_parquet(self, df, selected_landmark_indices):
+        unique_frames=sorted(df['frame'].unique())
+        for frame in unique_frames:
+            pos = parquet_processor.extract_landmarks(df, frame, selected_landmark_indices)
+            dist = parquet_processor.distance(pos)
+            angle = parquet_processor.angle_matrix(pos)
+            trsh = parquet_processor.treshold_matrix(dist)
+            rgb_img = parquet_processor.make_img(trsh, angle, dist)
             plt.imshow(rgb_img)
-            plt.title(f'Frame {frame_number}')
+            plt.title(f'Frame {frame}')
 
             plt.show(block=False)
             plt.pause(0.01)  # Pause to display the current frame's matrix
             plt.clf()  # Clear the figure to display the next frame's matrix
 
-        plt.close('all')  # Close the plot when done
-
-
+        plt.close('all')
 
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                                  152, 155, 337, 299, 333, 69, 104, 68, 398]
-parquet_processor = ParquetProcess()
-df = parquet_processor.ReadParquet(r'C:\Users\drend\Desktop\3574671853.parquet')
-clean_df = parquet_processor.CleanParquet(df)
-
-parquet_processor.AnimateParquet(clean_df)
+parquet_processor=ParquetProcess()
+df = parquet_processor.read_parquet(r'C:\Users\drend\Desktop\3574671853.parquet')
+clean_df = parquet_processor.clean_parquet(df, show_df=False)
+coordinates=parquet_processor.extract_landmarks(clean_df, 10, selected_landmark_indices)
+print(coordinates.shape)
+distance=parquet_processor.distance(coordinates)
+print(distance)
+angles=parquet_processor.angle_matrix(coordinates)
+print(angles)
+parquet_processor.animate_parquet(clean_df,selected_landmark_indices)

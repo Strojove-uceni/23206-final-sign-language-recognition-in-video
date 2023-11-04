@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
 import cv2
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class ParquetProcess:
@@ -105,6 +106,66 @@ class ParquetProcess:
 
         plt.close('all')
 
+    import numpy as np
+
+    def create_tensor(self, df, selected_landmark_indices):
+        unique_frames = sorted(df['frame'].unique())
+        stacked_images = []  # This list will store each individual image to be stacked
+
+        for frame in unique_frames:
+            hand_rows = df[(df['frame'] == frame) & ((df['type'] == 'right_hand') | (df['type'] == 'left_hand'))]
+            if hand_rows.empty:  # Skip frames without hand landmarks
+                continue
+            pos = self.extract_landmarks(df, frame, selected_landmark_indices)
+            dist = self.distance(pos)
+            angle = self.angle_matrix(pos)
+            trsh = self.treshold_matrix(dist)
+            rgb_img = self.make_img(trsh, angle, dist)
+            stacked_images.append(rgb_img)  # Append the current image to the list of images to be stacked
+
+        # Only after all frames have been processed do we concatenate the images
+        if stacked_images:  # Check if there are any images collected to stack
+            # Concatenate all the collected images along the third dimension (channel dimension)
+            big_array = np.concatenate(stacked_images, axis=2)
+            return big_array
+        else:
+            # If no images were collected, return an empty array with the correct empty shape
+            return np.empty((0, 0, 0))
+
+    def plot_3d_cube_with_transparency(self, image_stack):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ny, nx, total_channels = image_stack.shape
+        number_of_frames = total_channels // 3
+
+        # Pre-calculate the grid which will be constant for all frames
+        x_grid, y_grid = np.meshgrid(np.arange(nx), np.arange(ny))
+
+        for frame in range(number_of_frames):
+            # Extract the current frame's RGB values and calculate intensity
+            current_frame = image_stack[:, :, frame * 3:(frame + 1) * 3]
+            intensity = current_frame.mean(axis=2)
+            normalized_intensity = intensity / intensity.max()  # Normalizing to the max intensity
+
+            # Flatten the arrays for vectorized scatter plot
+            x_vals = x_grid.flatten()
+            y_vals = y_grid.flatten()
+            z_vals = np.full(x_vals.shape, frame)
+            color_vals = np.stack([np.zeros_like(normalized_intensity),
+                                   normalized_intensity,
+                                   np.zeros_like(normalized_intensity)], axis=2).reshape(-1, 3)
+
+            # Plot all points at once for this frame
+            ax.scatter(x_vals, y_vals, z_vals, c=color_vals, alpha=normalized_intensity.flatten())
+
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Frame')
+
+        plt.show()
+
+
+
 
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
@@ -112,3 +173,7 @@ parquet_processor = ParquetProcess()
 df = parquet_processor.read_parquet(r'C:\Users\drend\Desktop\3574671853.parquet')
 clean_df = parquet_processor.clean_parquet(df, show_df=False)
 parquet_processor.animate_parquet(clean_df, selected_landmark_indices)
+test_tensor = parquet_processor.create_tensor(clean_df, selected_landmark_indices)
+
+print(test_tensor.shape)
+parquet_processor.plot_3d_cube_with_transparency(test_tensor)

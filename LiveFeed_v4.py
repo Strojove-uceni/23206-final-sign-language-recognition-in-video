@@ -58,12 +58,15 @@ class WebcamStream:
         self.stopped = True
 
 class LiveFeed:
-    def __init__(self, selected_landmark_indices):
+    def __init__(self, selected_landmark_indices, depth=100):
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_hands = mp.solutions.hands
         self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
         self.hands = self.mp_hands.Hands(static_image_mode=False, max_num_hands=2)
         self.selected_landmark_indices = selected_landmark_indices
+        self.depth = depth
+        self.tensor = None
+        self.initialized = False
 
     def extract_landmarks(self, image, frame_number=0):
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -118,11 +121,35 @@ class LiveFeed:
         plt.show(block=False)
         plt.pause(0.01)  # Pause to display the current frame's matrix
         plt.clf()
-    # initializing and starting multi-threaded webcam input stream
+        return rgb
+
+
+    def tensor_creation(self, image):
+        image_array = np.array(image)
+        if not self.initialized:
+            # Initialize the tensor with the first image shape and set the initialized flag
+            m, n, channels = image_array.shape
+            self.tensor = np.zeros((m, n, channels * self.depth))
+            for i in range(self.depth):
+                self.tensor[:, :, i*channels:(i+1)*channels] = image_array
+            self.initialized = True
+        else:
+            m, n, _ = self.tensor.shape[:3]  # Current tensor dimensions
+            if image_array.shape[0] == m and image_array.shape[1] == n:
+                # Shift the tensor to remove the oldest image and make space for the new one
+                self.tensor = np.roll(self.tensor, -3, axis=2)
+                # Insert the new image at the 'freshest' end of the tensor
+                self.tensor[:, :, -3:] = image_array
+            else:
+                print("Image dimensions do not match tensor dimensions, skipping this image.")
+
+
+        return self.tensor
+
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
 parquet_proccessor=ParquetProcess()
-live_feed=LiveFeed(selected_landmark_indices)
+live_feed=LiveFeed(selected_landmark_indices,depth=500)
 webcam_stream = WebcamStream(stream_id=0)  # 0 id for main camera
 webcam_stream.start()
 # processing frames in input stream
@@ -135,10 +162,11 @@ while True :
         frame = webcam_stream.read()
         lnd=live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
         print(lnd)
-        live_feed.live_gesture(lnd,num_frames_processed)
-    # adding a delay for simulating video processing time
-    delay = 0.03 # delay value in seconds
-    time.sleep(delay)
+        rgb=live_feed.live_gesture(lnd,num_frames_processed)
+        tensor=live_feed.tensor_creation(rgb)
+        print(tensor.shape)
+        if num_frames_processed>60:
+            parquet_proccessor.plot_3d_cube_with_transparency(tensor)
     num_frames_processed += 1
     # displaying frame
     #cv2.imshow('frame' , frame)

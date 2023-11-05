@@ -9,12 +9,31 @@ from mpl_toolkits.mplot3d import Axes3D
 class ParquetProcess:
 
     def read_parquet(self, directory):
+        """
+        Reads parquet file from directory.
+
+        Parameters:
+        directory (string): File directory.
+
+        Returns:
+        dataframe (DataFrame): Read data.
+        """
         print(f'Reading file from {directory}')
         dataframe = pd.read_parquet(directory)
         print(f'Successfully read file')
         return dataframe
 
     def clean_parquet(self, dataframe, show_df=True):
+        """
+        Summarizes the information about the loaded, parquet dataframe and removes the NaN values.
+
+        Parameters:
+        dataframe (DataFrame): Parquet dataframe.
+        show_df (Bool, optional): If True, prints the first lines of the dataframe after cleaning. Defaults to True.
+
+        Returns:
+        cleaned_df (DataFrame): Cleared dataframe.
+        """
         print('DataFrame summary before cleaning:')
         print(dataframe.info())  # Summarize before cleaning
         print('\nCount of NaN values by column before cleaning:')
@@ -32,6 +51,17 @@ class ParquetProcess:
         return cleaned_df
 
     def extract_landmarks(self, dataframe, frame_number, selected_landmark_indices):
+        """
+        Combines the coordinates of selected significant points from a single frame of video.
+
+        Parameters:
+        dataframe (DataFrame): Parquet dataframe.
+        frame_number (int): Number of video frame.
+        selected_landmark_indices (list): List of indexes of selected points.
+
+        Returns:
+        combined_coordinates (np.array): Matrix with combined coordinates.
+        """
         hand_rows = dataframe[(dataframe['frame'] == frame_number) & (
             ((dataframe['type'] == 'right_hand') | (dataframe['type'] == 'left_hand')))]
         face_rows = dataframe[(dataframe['frame'] == frame_number) & (dataframe['type'] == 'face')]
@@ -42,17 +72,45 @@ class ParquetProcess:
         return combined_coordinates
 
     def normalize_matrix(self, matrix):
+        """
+        Normalizes the coordinate matrix of points using min-max normalization.
+
+        Parameters:
+        matrix (np.array): Coordinate matrix.
+
+        Returns:
+        normalized_matrix (np.array): Normalized coordinate matrix.
+        """
         min_val = np.min(matrix)
         max_val = np.max(matrix)
         normalized_matrix = (matrix - min_val) / (max_val - min_val)
         return normalized_matrix
 
     def distance(self, coordinates):
+        """
+        Calculates the matrix of mutual distances of significant points and normalizes it.
+
+        Parameters:
+        coordinates (np.array): Coordinate array.
+
+        Returns:
+        distance_norm (np.array): Normalized distance matrix.
+        """
         dist_norm = distance_matrix(coordinates, coordinates)
         distance_norm = self.normalize_matrix(dist_norm)
         return distance_norm
 
     def angle_between_vectors(self, v1, v2):
+        """
+        Calculates the angle between vectors.
+        
+        Parameters:
+        v1 (np.array): 
+        v2 (np.array): 
+
+        Returns:
+        angle_deg (float): 
+        """
         # Calculate the dot product and the angle in radians
         dot_prod = np.dot(v1, v2)
         norms = np.linalg.norm(v1) * np.linalg.norm(v2)
@@ -64,6 +122,15 @@ class ParquetProcess:
         return angle_deg
 
     def angle_matrix(self, vectors):
+        """
+        Calculates the matrix of angles between all vectors.
+        
+        Parameters:
+        vectors (np.array): 
+
+        Returns:
+        angle_mat (np.array): 
+        """
         n = vectors.shape[0]
         angle_mat = np.zeros((n, n))
 
@@ -77,16 +144,44 @@ class ParquetProcess:
         return angle_mat
 
     def treshold_matrix(self, distance, treshold=0.05):
+        """
+        Replaces distances less than threshold with zero.
+        
+        Parameters:
+        distance (np.array): 
+        treshold (float, optional): 
+
+        Returns:
+        proximity_matrix (): 
+        """
         proximity_matrix = (distance < treshold).astype(int)
         proximity_matrix = self.normalize_matrix(proximity_matrix)
         return proximity_matrix
 
     def make_img(self, R, G, B):
+        """
+        Creates an image.
+        
+        Parameters:
+        R (np.array): 
+        G (np.array): 
+        B (np.array): 
+
+        Returns:
+        rgb_img (cv2.image): 
+        """
         rgb_img = cv2.merge([R, G, B])
         rgb_img = cv2.flip(rgb_img, 1)
         return rgb_img
 
     def animate_parquet(self, df, selected_landmark_indices):
+        """
+        Plots the data representation animation for all video frames.
+
+        Parameters:
+        df (DataFrame): 
+        selected_landmark_indices (list): 
+        """
         unique_frames = sorted(df['frame'].unique())
         for frame in unique_frames:
             hand_rows = df[(df['frame'] == frame) & ((df['type'] == 'right_hand') | (df['type'] == 'left_hand'))]
@@ -106,9 +201,17 @@ class ParquetProcess:
 
         plt.close('all')
 
-    import numpy as np
-
     def create_tensor(self, df, selected_landmark_indices):
+        """
+        Converts the data matrix to a tensor.
+        
+        Parameters:
+        df (DataFrame): 
+        selected_landmark_indices (list): 
+
+        Returns:
+        big_array (np.array): 
+        """
         unique_frames = sorted(df['frame'].unique())
         stacked_images = []  # This list will store each individual image to be stacked
 
@@ -133,6 +236,12 @@ class ParquetProcess:
             return np.empty((0, 0, 0))
 
     def plot_3d_cube_with_transparency(self, image_stack):
+        """
+        Plots a 3d projection of a matrix representation of all video frames.
+        
+        Parameters:
+        image_stack (): 
+        """
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ny, nx, total_channels = image_stack.shape

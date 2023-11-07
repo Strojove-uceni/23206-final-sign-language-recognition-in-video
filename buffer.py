@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 
-class Data:
+class ParquetData:
   def __init__(self):
     self.data = []
 
@@ -26,6 +26,6 @@ df_train = pd.read_csv(path + "/train.csv", sep=",")
 df_train.head()
 
 # Dictionary for data
-data = Data()
+data = ParquetData()
 data.read_all(path, df_train)
 data.clean_all()

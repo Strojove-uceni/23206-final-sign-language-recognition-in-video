@@ -7,6 +7,11 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 class ParquetProcess:
+    def __init__(self, path, sign):
+        self.df = self.read_parquet(path)
+        self.clean_df = pd.DataFrame({})
+        self.tensor = np.array([])
+        self.sign = sign
 
     def read_parquet(self, directory):
         """
@@ -23,7 +28,7 @@ class ParquetProcess:
         print(f'Successfully read file')
         return dataframe
 
-    def clean_parquet(self, dataframe, show_df=True):
+    def clean_parquet(self, show_df=True):
         """
         Summarizes the information about the loaded, parquet dataframe and removes the NaN values.
 
@@ -35,20 +40,19 @@ class ParquetProcess:
         cleaned_df (DataFrame): Cleared dataframe.
         """
         print('DataFrame summary before cleaning:')
-        print(dataframe.info())  # Summarize before cleaning
+        print(self.df.info())  # Summarize before cleaning
         print('\nCount of NaN values by column before cleaning:')
-        print(dataframe.isna().sum())  # Count NaNs before cleaning
-        cleaned_df = dataframe.dropna()
+        print(self.df.isna().sum())  # Count NaNs before cleaning
+        self.cleaned_df = self.df.dropna()
         print('DataFrame summary after cleaning:')
-        print(cleaned_df.info())  # Summarize after cleaning
+        print(self.cleaned_df.info())  # Summarize after cleaning
         print('\nCount of NaN values by column after cleaning:')
-        print(cleaned_df.isna().sum())  # Count NaNs after cleaning
-        unique_frames_after_cleaning = cleaned_df['frame'].unique()
+        print(self.cleaned_df.isna().sum())  # Count NaNs after cleaning
+        unique_frames_after_cleaning = self.cleaned_df['frame'].unique()
         print("Unique frames after cleaning:", unique_frames_after_cleaning)
         if show_df == 1:
             print(f'Here is few lines from parquet file')
-            print(cleaned_df.head())
-        return cleaned_df
+            print(self.cleaned_df.head())
 
     def extract_landmarks(self, dataframe, frame_number, selected_landmark_indices):
         """
@@ -174,7 +178,7 @@ class ParquetProcess:
         rgb_img = cv2.flip(rgb_img, 1)
         return rgb_img
 
-    def animate_parquet(self, df, selected_landmark_indices):
+    def animate_parquet(self, selected_landmark_indices):
         """
         Plots the data representation animation for all video frames.
 
@@ -182,12 +186,12 @@ class ParquetProcess:
         df (DataFrame): 
         selected_landmark_indices (list): 
         """
-        unique_frames = sorted(df['frame'].unique())
+        unique_frames = sorted(self.clean_df['frame'].unique())
         for frame in unique_frames:
-            hand_rows = df[(df['frame'] == frame) & ((df['type'] == 'right_hand') | (df['type'] == 'left_hand'))]
+            hand_rows = self.clean_df[(self.clean_df['frame'] == frame) & ((self.clean_df['type'] == 'right_hand') | (self.clean_df['type'] == 'left_hand'))]
             if hand_rows.empty:  # Skip frames without hand landmarks
                 continue
-            pos = self.extract_landmarks(df, frame, selected_landmark_indices)
+            pos = self.extract_landmarks(self.clean_df, frame, selected_landmark_indices)
             dist = self.distance(pos)
             angle = self.angle_matrix(pos)
             trsh = self.treshold_matrix(dist)
@@ -201,7 +205,7 @@ class ParquetProcess:
 
         plt.close('all')
 
-    def create_tensor(self, df, selected_landmark_indices):
+    def create_tensor(self, selected_landmark_indices):
         """
         Converts the data matrix to a tensor.
         
@@ -212,14 +216,14 @@ class ParquetProcess:
         Returns:
         big_array (np.array): 
         """
-        unique_frames = sorted(df['frame'].unique())
+        unique_frames = sorted(self.clean_df['frame'].unique())
         stacked_images = []  # This list will store each individual image to be stacked
 
         for frame in unique_frames:
-            hand_rows = df[(df['frame'] == frame) & ((df['type'] == 'right_hand') | (df['type'] == 'left_hand'))]
+            hand_rows = self.clean_df[(self.clean_df['frame'] == frame) & ((self.clean_df['type'] == 'right_hand') | (self.clean_df['type'] == 'left_hand'))]
             if hand_rows.empty:  # Skip frames without hand landmarks
                 continue
-            pos = self.extract_landmarks(df, frame, selected_landmark_indices)
+            pos = self.extract_landmarks(self.clean_df, frame, selected_landmark_indices)
             dist = self.distance(pos)
             angle = self.angle_matrix(pos)
             trsh = self.treshold_matrix(dist)
@@ -229,11 +233,10 @@ class ParquetProcess:
         # Only after all frames have been processed do we concatenate the images
         if stacked_images:  # Check if there are any images collected to stack
             # Concatenate all the collected images along the third dimension (channel dimension)
-            big_array = np.concatenate(stacked_images, axis=2)
-            return big_array
+            self.tensor = np.concatenate(stacked_images, axis=2)
         else:
             # If no images were collected, return an empty array with the correct empty shape
-            return np.empty((0, 0, 0))
+            self.tensor = np.empty((0, 0, 0))
 
     def plot_3d_cube_with_transparency(self, image_stack):
         """
@@ -275,14 +278,12 @@ class ParquetProcess:
 
 
 
+# selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
+#                              152, 155, 337, 299, 333, 69, 104, 68, 398]
+# parquet_processor = ParquetProcess(r'C:\Users\drend\Desktop\3574671853.parquet')
+# parquet_processor.clean_parquet(show_df=False)
+# parquet_processor.animate_parquet(selected_landmark_indices)
+# parquet_processor.create_tensor(selected_landmark_indices)
 
-selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
-                             152, 155, 337, 299, 333, 69, 104, 68, 398]
-parquet_processor = ParquetProcess()
-df = parquet_processor.read_parquet(r'C:\Users\drend\Desktop\3574671853.parquet')
-clean_df = parquet_processor.clean_parquet(df, show_df=False)
-parquet_processor.animate_parquet(clean_df, selected_landmark_indices)
-test_tensor = parquet_processor.create_tensor(clean_df, selected_landmark_indices)
-
-print(test_tensor.shape)
-parquet_processor.plot_3d_cube_with_transparency(test_tensor)
+# print(parquet_processor.tensor.shape)
+# parquet_processor.plot_3d_cube_with_transparency(parquet_processor.tensor)

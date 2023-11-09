@@ -7,11 +7,10 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 class ParquetProcess:
-    def __init__(self, path, sign):
+    def __init__(self, path):
         self.df = self.read_parquet(path)
         self.clean_df = pd.DataFrame({})
         self.tensor = np.array([])
-        self.sign = sign
 
     def read_parquet(self, directory):
         """

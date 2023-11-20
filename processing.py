@@ -22,9 +22,8 @@ class ParquetProcess:
         Returns:
         dataframe (DataFrame): Read data.
         """
-        # print(f'Reading file from {directory}')
         dataframe = pd.read_parquet(directory)
-        # print(f'Successfully read file')
+        print('Successfully read file from: ', directory)
         return dataframe
 
     def clean_parquet(self, show_df=True):
@@ -38,17 +37,7 @@ class ParquetProcess:
         Returns:
         clean_df (DataFrame): Cleared dataframe.
         """
-        # print('DataFrame summary before cleaning:')
-        # print(self.df.info())  # Summarize before cleaning
-        # print('\nCount of NaN values by column before cleaning:')
-        # print(self.df.isna().sum())  # Count NaNs before cleaning
-        self.clean_df = self.df.dropna()
-        # print('DataFrame summary after cleaning:')
-        # print(self.clean_df.info())  # Summarize after cleaning
-        # print('\nCount of NaN values by column after cleaning:')
-        # print(self.clean_df.isna().sum())  # Count NaNs after cleaning
-        # unique_frames_after_cleaning = self.clean_df['frame'].unique()
-        # print("Unique frames after cleaning:", len(unique_frames_after_cleaning))
+        self.clean_df = self.df.fillna(0)
         if show_df == 1:
             print(f'Here is few lines from parquet file')
             print(self.clean_df.head())
@@ -86,7 +75,10 @@ class ParquetProcess:
         """
         min_val = np.min(matrix)
         max_val = np.max(matrix)
-        normalized_matrix = (matrix - min_val) / (max_val - min_val)
+        if(min_val == max_val):
+            normalized_matrix = np.zeros(matrix.shape)
+        else:
+            normalized_matrix = (matrix - min_val) / (max_val - min_val)
         return normalized_matrix
 
     def distance(self, coordinates):

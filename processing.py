@@ -7,11 +7,10 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 class ParquetProcess:
-    def __init__(self, path, sign):
+    def __init__(self, path, landmark_id, max_length):
         self.df = self.read_parquet(path)
-        self.clean_df = pd.DataFrame({})
-        self.tensor = np.array([])
-        self.sign = sign
+        self.clean_parquet(False)
+        self.create_tensor(landmark_id, max_length)
 
     def read_parquet(self, directory):
         """
@@ -23,9 +22,8 @@ class ParquetProcess:
         Returns:
         dataframe (DataFrame): Read data.
         """
-        print(f'Reading file from {directory}')
         dataframe = pd.read_parquet(directory)
-        print(f'Successfully read file')
+        print('Successfully read file from: ', directory)
         return dataframe
 
     def clean_parquet(self, show_df=True):
@@ -37,22 +35,12 @@ class ParquetProcess:
         show_df (Bool, optional): If True, prints the first lines of the dataframe after cleaning. Defaults to True.
 
         Returns:
-        cleaned_df (DataFrame): Cleared dataframe.
+        clean_df (DataFrame): Cleared dataframe.
         """
-        print('DataFrame summary before cleaning:')
-        print(self.df.info())  # Summarize before cleaning
-        print('\nCount of NaN values by column before cleaning:')
-        print(self.df.isna().sum())  # Count NaNs before cleaning
-        self.cleaned_df = self.df.dropna()
-        print('DataFrame summary after cleaning:')
-        print(self.cleaned_df.info())  # Summarize after cleaning
-        print('\nCount of NaN values by column after cleaning:')
-        print(self.cleaned_df.isna().sum())  # Count NaNs after cleaning
-        unique_frames_after_cleaning = self.cleaned_df['frame'].unique()
-        print("Unique frames after cleaning:", unique_frames_after_cleaning)
+        self.clean_df = self.df.fillna(0)
         if show_df == 1:
             print(f'Here is few lines from parquet file')
-            print(self.cleaned_df.head())
+            print(self.clean_df.head())
 
     def extract_landmarks(self, dataframe, frame_number, selected_landmark_indices):
         """
@@ -87,7 +75,10 @@ class ParquetProcess:
         """
         min_val = np.min(matrix)
         max_val = np.max(matrix)
-        normalized_matrix = (matrix - min_val) / (max_val - min_val)
+        if(min_val == max_val):
+            normalized_matrix = np.zeros(matrix.shape)
+        else:
+            normalized_matrix = (matrix - min_val) / (max_val - min_val)
         return normalized_matrix
 
     def distance(self, coordinates):
@@ -205,7 +196,7 @@ class ParquetProcess:
 
         plt.close('all')
 
-    def create_tensor(self, selected_landmark_indices):
+    def create_tensor(self, selected_landmark_indices, max_tensor_length):
         """
         Converts the data matrix to a tensor.
         
@@ -229,6 +220,11 @@ class ParquetProcess:
             trsh = self.treshold_matrix(dist)
             rgb_img = self.make_img(trsh, angle, dist)
             stacked_images.append(rgb_img)  # Append the current image to the list of images to be stacked
+
+
+        for frame in range(max_tensor_length - len(stacked_images)):
+            rgb_img = self.make_img(np.zeros(trsh.shape), np.zeros(angle.shape), np.zeros(dist.shape))
+            stacked_images.append(rgb_img)  # Append the current image to the list of images to be stacked        
 
         # Only after all frames have been processed do we concatenate the images
         if stacked_images:  # Check if there are any images collected to stack

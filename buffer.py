@@ -24,6 +24,7 @@ class ParquetData:
           self.data[sign_name][participant_folder] = ParquetProcess(file_path, landmark_id, max_length)
     print("Data read completed!")
 
+
 path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs"
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
@@ -33,3 +34,4 @@ df_train.head()
 
 data_load = ParquetData()
 data_load.read_all(path, df_train, selected_landmark_indices, 37)
+# data_load.data["milk"]["4024"].tensor

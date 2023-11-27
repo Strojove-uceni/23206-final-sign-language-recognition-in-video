@@ -34,7 +34,7 @@ class ParquetData:
       for file_name in os.listdir(path_sign):
         if(not sign_name in list(self.data.keys())):
           self.data[sign_name] = {}
-        self.data[sign_name][file_name.split(".")[0]] = np.load(path_sign + file_name, allow_pickle=True)
+        self.data[sign_name][file_name.split(".")[0]] = np.load(path_sign + file_name, allow_pickle=False)
     print("Data read completed!")
 
   def preprocess_all(self, path, df_list, landmark_id, max_length = 140):
@@ -62,8 +62,8 @@ class ParquetData:
         else:
           sign_name = df_row.sign.values[0]
           readed_data = ParquetProcess(file_path, landmark_id, max_length)
-          self.save_tensor(path_tensor, sign_name, readed_data, count)
-    print("Data read completed!")
+          self.save_tensor(path_tensor, sign_name, readed_data.tensor, count)
+    print("Data preprocess completed!")
 
   def save_tensor(self, path, sign, tensor, count):
     """
@@ -82,12 +82,12 @@ class ParquetData:
 
     file_path = os.path.join(sign_dir, sign + "_" + str(count) + '_tensor.npy')
 
-    np.save(file_path, tensor)
+    np.save(file_path, tensor, allow_pickle=False)
     print(f"Tensor saved successfully at {file_path}")
 
 
-# path = r"E:\asl-signs"
-path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs-red"
+path = r"E:\asl-signs"
+# path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs-red"
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
 

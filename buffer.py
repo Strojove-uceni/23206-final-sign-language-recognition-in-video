@@ -8,7 +8,7 @@ class ParquetData:
   def __init__(self):
     self.data = {}
 
-  def read_all(self, path, df_list, landmark_id, max_length = 140):
+  def read_all_parquet(self, path, df_list, landmark_id, max_length = 140):
     for participant_folder in os.listdir(path + "/train_landmark_files/"):
       path_folder = path + "/train_landmark_files/" + participant_folder + "/"
       for file_name in os.listdir(path_folder):
@@ -26,6 +26,15 @@ class ParquetData:
           if(not participant_folder in list(self.data[sign_name].keys())):
             self.data[sign_name][participant_folder] = {}
           self.data[sign_name][participant_folder][sequence_name] = ParquetProcess(file_path, landmark_id, max_length)
+    print("Data read completed!")
+
+  def read_all_tensor(self, path):
+    for sign_name in os.listdir(path + "/tensors/"):
+      path_sign = path + "/tensors/" + sign_name + "/"
+      for file_name in os.listdir(path_sign):
+        if(not sign_name in list(self.data.keys())):
+          self.data[sign_name] = {}
+        self.data[sign_name][file_name.split(".")[0]] = np.load(path_sign + file_name, allow_pickle=True)
     print("Data read completed!")
 
   def preprocess_all(self, path, df_list, landmark_id, max_length = 140):
@@ -77,8 +86,8 @@ class ParquetData:
     print(f"Tensor saved successfully at {file_path}")
 
 
-path = r"E:\asl-signs"
-# path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs-red"
+# path = r"E:\asl-signs"
+path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs-red"
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
 
@@ -87,4 +96,6 @@ df_train.head()
 
 data_load = ParquetData()
 data_load.preprocess_all(path, df_train, selected_landmark_indices, 140)
-# data_load.read_all(path, df_train, selected_landmark_indices, 140)
+# data_load.read_all_parquet(path, df_train, selected_landmark_indices, 140)
+data_load.read_all_tensor(path)
+

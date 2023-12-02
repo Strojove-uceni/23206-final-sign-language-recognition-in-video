@@ -2,7 +2,7 @@ from processing import ParquetProcess
 import pandas as pd
 import numpy as np
 import os
-
+import shutil
 
 class ParquetData:
   def __init__(self):
@@ -37,7 +37,7 @@ class ParquetData:
         self.data[sign_name][file_name.split(".")[0]] = np.load(path_sign + file_name, allow_pickle=False)
     print("Data read completed!")
 
-  def preprocess_all(self, path, df_list, landmark_id, max_length = 140):
+  def preprocess_all(self, path, df_list, landmark_id, sign_list, max_length = 140):
     """
     Reads all parquet files in directory, shorter than max_length, optionally sorts and saves numpy tensors made of parquet.
     :param path: Path to data folder
@@ -61,8 +61,9 @@ class ParquetData:
           continue
         else:
           sign_name = df_row.sign.values[0]
-          readed_data = ParquetProcess(file_path, landmark_id, max_length)
-          self.save_tensor(path_tensor, sign_name, readed_data.tensor, count)
+          if sign_name in sign_list:
+            readed_data = ParquetProcess(file_path, landmark_id, max_length)
+            self.save_tensor(path_tensor, sign_name, readed_data.tensor, count)
     print("Data preprocess completed!")
 
   def save_tensor(self, path, sign, tensor, count):
@@ -86,16 +87,18 @@ class ParquetData:
     print(f"Tensor saved successfully at {file_path}")
 
 
+
 path = r"E:\asl-signs"
 # path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs-red"
 selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
                              152, 155, 337, 299, 333, 69, 104, 68, 398]
 
+signs=['man', 'sad', 'airplane', 'bad']
 df_train = pd.read_csv(path + "/train_mod.csv", sep=",")
 df_train.head()
 
 data_load = ParquetData()
-data_load.preprocess_all(path, df_train, selected_landmark_indices, 140)
+data_load.preprocess_all(path, df_train, selected_landmark_indices, signs,140)
 # data_load.read_all_parquet(path, df_train, selected_landmark_indices, 140)
-data_load.read_all_tensor(path)
+
 

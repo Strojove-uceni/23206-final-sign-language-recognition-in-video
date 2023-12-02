@@ -23,7 +23,7 @@ class ParquetProcess:
         dataframe (DataFrame): Read data.
         """
         dataframe = pd.read_parquet(directory)
-        print('Successfully read file from: ', directory)
+       # print('Successfully read file from: ', directory)
         return dataframe
 
     def clean_parquet(self, show_df=True):

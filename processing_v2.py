@@ -276,13 +276,4 @@ class ParquetProcess:
 
 
 
-selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
-                             152, 155, 337, 299, 333, 69, 104, 68, 398]
-parquet_processor = ParquetProcess()
-df = parquet_processor.read_parquet(r'C:\Users\drend\Desktop\3574671853.parquet')
-clean_df = parquet_processor.clean_parquet(df, show_df=False)
-parquet_processor.animate_parquet(clean_df, selected_landmark_indices)
-test_tensor = parquet_processor.create_tensor(clean_df, selected_landmark_indices)
 
-print(test_tensor.shape)
-parquet_processor.plot_3d_cube_with_transparency(test_tensor)

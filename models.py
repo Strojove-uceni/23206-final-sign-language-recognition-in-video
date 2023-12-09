@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from torchmetrics import Accuracy
 import torch.optim as optim
 import torch
+import numpy
 
 
 class AslLitModel(pl.LightningModule):
@@ -173,6 +174,11 @@ class AsLModel2(pl.LightningModule):
         return optimizer
 
 
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+
 class AslCnnRnnModel(pl.LightningModule):
     def __init__(self, input_shape, hidden_dim, num_classes, n_outputs, learning_rate=3e-4):
         super(AslCnnRnnModel, self).__init__()
@@ -180,7 +186,6 @@ class AslCnnRnnModel(pl.LightningModule):
         self.num_classes = num_classes
         self.learning_rate = learning_rate
         self.n_outputs = n_outputs
-        self.n_sizes = self._get_output_shape(input_shape)
         # CNN 
         self.cnn = nn.Sequential(
             nn.Conv3d(1, 32, 3, 1),
@@ -193,20 +198,28 @@ class AslCnnRnnModel(pl.LightningModule):
             nn.Conv3d(64, 64, 3, 1),
             nn.ReLU(),
             nn.MaxPool3d(3),
-            nn.Linear(self.n_sizes, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
         )
+        self.n_sizes = self._get_output_shape(input_shape)
+
+        # Additional layers
+        self.cnn.add_module('flatten', Flatten())
+        self.cnn.add_module('linear1', nn.Linear(self.n_sizes, 512))
+        self.cnn.add_module('relu1', nn.ReLU())
+        self.cnn.add_module('linear2', nn.Linear(512, 128))
+        self.cnn.add_module('relu2', nn.ReLU())
+        self.cnn.add_module('linear3', nn.Linear(128, self.num_classes))
+
         # RNN 
-        self.rnn = nn.LSTM(input_size=128, hidden_size=hidden_dim, num_layers=num_classes, batch_first=True)
+        self.rnn = nn.LSTM(input_size=self.num_classes, hidden_size=hidden_dim, num_layers=2, batch_first=True)
         # Classification layer
-        self.classifier = nn.Linear(self.hidden_dim, self.n_outputs)
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.classifier = nn.Linear(self.hidden_dim, self.num_classes)
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.accuracy = Accuracy(task="multiclass", num_classes=self.num_classes)
 
     def _get_output_shape(self, shape):
-        batch_size = 1
+        batch_size = 4
         input = torch.autograd.Variable(torch.rand(batch_size, *shape))
-        output_feat = self._feature_extractor(input)
+        output_feat = self.cnn(input)
         n_size = output_feat.data.view(batch_size, -1).size(1)
         return n_size
 
@@ -228,8 +241,8 @@ class AslCnnRnnModel(pl.LightningModule):
     def forward(self, x):
         # CNN
         batch_size, timesteps, C, H, W = x.size()
-        c_in = x.view(batch_size * timesteps, C, H, W)
-        c_out = self.cnn(c_in)
+        # c_in = x.view(batch_size * timesteps, C, H, W)
+        c_out = self.cnn(x)
         r_in = c_out.view(batch_size, timesteps, -1)
 
         # RNN
@@ -237,21 +250,24 @@ class AslCnnRnnModel(pl.LightningModule):
         r_out2 = r_out[:, -1, :]
 
         # Classifier
-        out = self.fc(r_out2)
-
+        out = self.classifier(r_out2)
         return out
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = self.loss_fn(y_hat, y.view(-1, 1))
+        loss = self.loss_fn(y_hat, y)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        # for name, param in self.named_parameters():
+        #     if param.grad is not None:
+        #         print(f"Layer: {name}, Gradient norm: {param.grad.norm().item()}")
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
-        loss = self.loss_fn(y_hat, y.view(-1, 1))
+        loss = self.loss_fn(y_hat, y)
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         return loss
 

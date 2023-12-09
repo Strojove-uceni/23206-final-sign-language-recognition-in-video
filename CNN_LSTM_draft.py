@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 import wandb
+import torch
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import StochasticWeightAveraging
 from Datasets import ParquetFolderDataset, NpyFolderDataset, AslParquetDataModule, AslNpyDataModule
@@ -14,14 +15,14 @@ def main():
               "input_dim": (70, 70, 420),
               "model_input": (1, 70, 70, 420),
               "num_classes": 10,
-              "hidden_dim": 128,
+              "hidden_dim": 16,
               "n_outputs": 1,
               "num_of_workers": 4,
               "path": r"C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs/tensors",
-              "batch": 1,
+              "batch": 4,
               "val_split": 0.2,
-              "learning_rate": 3e-3,
-              "epochs": 20,
+              "learning_rate": 1e-5,
+              "epochs": 10,
               "precision": 16,
               "accumulated gradient batches": 8,
               "Stochastic Weight Averaging": 1e-2,
@@ -34,7 +35,7 @@ def main():
 
     model = AslCnnRnnModel(params["model_input"], params["hidden_dim"], dm.num_classes, params["n_outputs"], params["learning_rate"])
 
-    wandb_logger = WandbLogger(project='asl-project', job_type='train')
+    wandb_logger = WandbLogger(project='cnn_rnn', job_type='train')
     wandb_logger.experiment.config.update({
         "model_name": "CNN_RNN",
         "input_dim": params["input_dim"],

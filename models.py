@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 from torch import nn
 from torch.nn import functional as F
 from torchmetrics import Accuracy
+import torch.optim as optim
 import torch
 
 
@@ -170,4 +171,90 @@ class AsLModel2(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer
+
+
+class AslCnnRnnModel(pl.LightningModule):
+    def __init__(self, input_shape, hidden_dim, num_classes, n_outputs, learning_rate=3e-4):
+        super(AslCnnRnnModel, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.num_classes = num_classes
+        self.learning_rate = learning_rate
+        self.n_outputs = n_outputs
+        self.n_sizes = self._get_output_shape(input_shape)
+        # CNN 
+        self.cnn = nn.Sequential(
+            nn.Conv3d(1, 32, 3, 1),
+            nn.ReLU(),
+            nn.Conv3d(32, 32, 3, 1),
+            nn.ReLU(),
+            nn.MaxPool3d(3),
+            nn.Conv3d(32, 64, 3, 1),
+            nn.ReLU(),
+            nn.Conv3d(64, 64, 3, 1),
+            nn.ReLU(),
+            nn.MaxPool3d(3),
+            nn.Linear(self.n_sizes, 512),
+            nn.ReLU(),
+            nn.Linear(512, 128),
+        )
+        # RNN 
+        self.rnn = nn.LSTM(input_size=128, hidden_size=hidden_dim, num_layers=num_classes, batch_first=True)
+        # Classification layer
+        self.classifier = nn.Linear(self.hidden_dim, self.n_outputs)
+        self.loss_fn = nn.BCEWithLogitsLoss()
+
+    def _get_output_shape(self, shape):
+        batch_size = 1
+        input = torch.autograd.Variable(torch.rand(batch_size, *shape))
+        output_feat = self._feature_extractor(input)
+        n_size = output_feat.data.view(batch_size, -1).size(1)
+        return n_size
+
+    def _feature_extractor(self, x):
+        conv1 = nn.Conv3d(1, 32, 3, 1)
+        conv2 = nn.Conv3d(32, 32, 3, 1)
+        conv3 = nn.Conv3d(32, 64, 3, 1)
+        conv4 = nn.Conv3d(64, 64, 3, 1)
+
+        pool1 = nn.MaxPool3d(3)
+        pool2 = nn.MaxPool3d(3)
+
+        x = F.relu(conv1(x))
+        x = pool1(F.relu(conv2(x)))
+        x = F.relu(conv3(x))
+        x = pool2(F.relu(conv4(x)))
+        return x
+
+    def forward(self, x):
+        # CNN
+        batch_size, timesteps, C, H, W = x.size()
+        c_in = x.view(batch_size * timesteps, C, H, W)
+        c_out = self.cnn(c_in)
+        r_in = c_out.view(batch_size, timesteps, -1)
+
+        # RNN
+        r_out, (h_n, h_c) = self.rnn(r_in)
+        r_out2 = r_out[:, -1, :]
+
+        # Classifier
+        out = self.fc(r_out2)
+
+        return out
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y.view(-1, 1))
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y.view(-1, 1))
+        self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        return loss
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=0.01)
 

@@ -5,6 +5,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import StochasticWeightAveraging
 from Datasets import ParquetFolderDataset, NpyFolderDataset, AslParquetDataModule, AslNpyDataModule
 from models import AslLitModel, AslCnnRnnModel
+from pytorch_lightning.tuner import Tuner
 
 
 def main():
@@ -14,15 +15,16 @@ def main():
     params = {"landmarks": selected_landmark_indices,
               "input_dim": (70, 70, 420),
               "model_input": (1, 70, 70, 420),
-              "num_classes": 10,
-              "hidden_dim": 16,
-              "n_outputs": 1,
+              "num_classes": 4,
+              "hidden_dim": 128,
+              "n_layers": 1,
               "num_of_workers": 4,
               "path": r"C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs/tensors",
-              "batch": 4,
+              "batch": 16,
               "val_split": 0.2,
-              "learning_rate": 1e-5,
-              "epochs": 10,
+              "learning_rate": 1e-4,
+              "gradient_clip": 0.1,
+              "epochs": 3,
               "precision": 16,
               "accumulated gradient batches": 8,
               "Stochastic Weight Averaging": 1e-2,
@@ -33,7 +35,7 @@ def main():
     dm = AslNpyDataModule(params["input_dim"], params["num_classes"], params["num_of_workers"], params["path"], params["batch"], params["val_split"])
     dm.setup()
 
-    model = AslCnnRnnModel(params["model_input"], params["hidden_dim"], dm.num_classes, params["n_outputs"], params["learning_rate"])
+    model = AslCnnRnnModel(params["model_input"], params["hidden_dim"], dm.num_classes, params["n_layers"], params["learning_rate"])
 
     wandb_logger = WandbLogger(project='cnn_rnn', job_type='train')
     wandb_logger.experiment.config.update({
@@ -43,8 +45,11 @@ def main():
         "num_classes": params["num_classes"],
         "num_of_workers": params["num_of_workers"],
         "batch": params["batch"],
+        "hidden_dim": params["hidden_dim"],
+        "n_layers": params["n_layers"],
         "val_split": params["val_split"],
         "learning_rate": params["learning_rate"],
+        "gradient_clip": params["gradient_clip"],
         "epochs": params["epochs"],
         "precision": params["precision"],
         "accumulated gradient batches": params["accumulated gradient batches"],
@@ -52,8 +57,12 @@ def main():
     })
     checkpoint_callback = pl.callbacks.ModelCheckpoint()
     trainer = pl.Trainer(logger=wandb_logger, max_epochs=params["epochs"],
-                         callbacks=[StochasticWeightAveraging(swa_lrs=params["Stochastic Weight Averaging"])], precision=params["precision"], accumulate_grad_batches=params["accumulated gradient batches"],
+                         callbacks=[StochasticWeightAveraging(swa_lrs=params["Stochastic Weight Averaging"])], precision=params["precision"], accumulate_grad_batches=params["accumulated gradient batches"]
+                         #gradient_clip_val=params["gradient_clip"]
                          )
+
+    # tuner = Tuner(trainer)
+    # tuner.lr_find(model)
 
     trainer.fit(model, dm)
     trainer.test(dataloaders=dm.test_dataloader())

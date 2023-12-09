@@ -180,12 +180,11 @@ class Flatten(nn.Module):
 
 
 class AslCnnRnnModel(pl.LightningModule):
-    def __init__(self, input_shape, hidden_dim, num_classes, n_outputs, learning_rate=3e-4):
+    def __init__(self, input_shape, hidden_dim, num_classes, n_layers, learning_rate=3e-4):
         super(AslCnnRnnModel, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_classes = num_classes
         self.learning_rate = learning_rate
-        self.n_outputs = n_outputs
         # CNN 
         self.cnn = nn.Sequential(
             nn.Conv3d(1, 32, 3, 1),
@@ -193,11 +192,11 @@ class AslCnnRnnModel(pl.LightningModule):
             nn.Conv3d(32, 32, 3, 1),
             nn.ReLU(),
             nn.MaxPool3d(3),
-            nn.Conv3d(32, 64, 3, 1),
-            nn.ReLU(),
-            nn.Conv3d(64, 64, 3, 1),
-            nn.ReLU(),
-            nn.MaxPool3d(3),
+            # nn.Conv3d(32, 64, 3, 1),
+            # nn.ReLU(),
+            # nn.Conv3d(64, 64, 3, 1),
+            # nn.ReLU(),
+            # nn.MaxPool3d(3),
         )
         self.n_sizes = self._get_output_shape(input_shape)
 
@@ -206,11 +205,15 @@ class AslCnnRnnModel(pl.LightningModule):
         self.cnn.add_module('linear1', nn.Linear(self.n_sizes, 512))
         self.cnn.add_module('relu1', nn.ReLU())
         self.cnn.add_module('linear2', nn.Linear(512, 128))
-        self.cnn.add_module('relu2', nn.ReLU())
-        self.cnn.add_module('linear3', nn.Linear(128, self.num_classes))
+
+        # self.cnn.add_module('linear1', nn.Linear(self.n_sizes, 512))
+        # self.cnn.add_module('relu1', nn.ReLU())
+        # self.cnn.add_module('linear2', nn.Linear(512, 256))
+        # self.cnn.add_module('relu2', nn.ReLU())
+        # self.cnn.add_module('linear3', nn.Linear(256, 128))
 
         # RNN 
-        self.rnn = nn.LSTM(input_size=self.num_classes, hidden_size=hidden_dim, num_layers=2, batch_first=True)
+        self.rnn = nn.LSTM(input_size=128, hidden_size=hidden_dim, num_layers=n_layers, batch_first=True)
         # Classification layer
         self.classifier = nn.Linear(self.hidden_dim, self.num_classes)
         self.loss_fn = nn.CrossEntropyLoss()
@@ -226,16 +229,16 @@ class AslCnnRnnModel(pl.LightningModule):
     def _feature_extractor(self, x):
         conv1 = nn.Conv3d(1, 32, 3, 1)
         conv2 = nn.Conv3d(32, 32, 3, 1)
-        conv3 = nn.Conv3d(32, 64, 3, 1)
-        conv4 = nn.Conv3d(64, 64, 3, 1)
+        # conv3 = nn.Conv3d(32, 64, 3, 1)
+        # conv4 = nn.Conv3d(64, 64, 3, 1)
 
         pool1 = nn.MaxPool3d(3)
-        pool2 = nn.MaxPool3d(3)
+        # pool2 = nn.MaxPool3d(3)
 
         x = F.relu(conv1(x))
         x = pool1(F.relu(conv2(x)))
-        x = F.relu(conv3(x))
-        x = pool2(F.relu(conv4(x)))
+        # x = F.relu(conv3(x))
+        # x = pool2(F.relu(conv4(x)))
         return x
 
     def forward(self, x):
@@ -258,6 +261,9 @@ class AslCnnRnnModel(pl.LightningModule):
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_acc', self.accuracy(y_hat, y), prog_bar=True)
+        # Gradient clipping
+        # torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
 
         # for name, param in self.named_parameters():
         #     if param.grad is not None:
@@ -269,8 +275,16 @@ class AslCnnRnnModel(pl.LightningModule):
         y_hat = self(x)
         loss = self.loss_fn(y_hat, y)
         self.log('val_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_acc', self.accuracy(y_hat, y), prog_bar=True)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y)
+        self.log('test_loss', loss, prog_bar=True)
+        self.log('test_acc', self.accuracy(y_hat, y), prog_bar=True)
+        return loss
+    
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=0.01)
-

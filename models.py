@@ -3,6 +3,8 @@ from torch import nn
 from torch.nn import functional as F
 from torchmetrics import Accuracy
 import torch
+import numpy
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 class AslLitModel(pl.LightningModule):
@@ -91,30 +93,35 @@ class AslLitModel(pl.LightningModule):
         return optimizer
 
 
-class AsLModel2(pl.LightningModule):
+class AslLitModel2(pl.LightningModule):
     def __init__(self, input_shape, num_classes, learning_rate=3e-4):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.num_classes = num_classes
 
-        self.conv1 = nn.Conv3d(1, 32, (3, 3, 3))
-        nn.init.constant_(self.conv1.bias, 0.01)
-        self.conv2 = nn.Conv3d(32, 32, (3, 3, 3))
-        nn.init.constant_(self.conv2.bias, 0.01)
-        self.conv3 = nn.Conv3d(32, 64, (3, 3, 3))
-        self.conv4 = nn.Conv3d(64, 64, (2, 2, 2))
+        self.conv1 = nn.Conv3d(1, 64, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm1 = nn.BatchNorm3d(64)
 
-        self.pool = nn.MaxPool3d((2, 2, 2))
-        self.dropout1 = nn.Dropout(0.6)
-        self.dropout2 = nn.Dropout(0.7)
-        self.dropout3 = nn.Dropout(0.5)
+        self.conv2 = nn.Conv3d(64, 64, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool2 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm2 = nn.BatchNorm3d(64)
 
-        n_sizes = self._get_conv_output(input_shape)
+        self.conv3 = nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool3 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm3 = nn.BatchNorm3d(128)
 
-        self.fc1 = nn.Linear(n_sizes, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+        self.conv4 = nn.Conv3d(128, 256, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool4 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm4 = nn.BatchNorm3d(256)
+
+        self.global_pool = nn.AdaptiveMaxPool3d(1)
+        self.fc1 = nn.Linear(256, 512)
+        self.dropout = nn.Dropout(0.3)
+        self.fc2 = nn.Linear(512, num_classes)
+
+        #n_sizes = self._get_conv_output(input_shape)
 
         self.accuracy = Accuracy(task="multiclass", num_classes=self.num_classes)
 
@@ -134,14 +141,17 @@ class AsLModel2(pl.LightningModule):
         return x
 
     def forward(self, x):
-        x = self._feature_extractor(x)
-        x = x.view(x.size(0), -1)
+        x = F.relu(self.batch_norm1(self.max_pool1(self.conv1(x))))
+        x = F.relu(self.batch_norm2(self.max_pool2(self.conv2(x))))
+        x = F.relu(self.batch_norm3(self.max_pool3(self.conv3(x))))
+        x = F.relu(self.batch_norm4(self.max_pool4(self.conv4(x))))
+
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
-        x = self.dropout1(x)
-        x = F.relu(self.fc2(x))
-        x = self.dropout2(x)
-        x = self.fc3(x)
-        return F.log_softmax(x, dim=1)
+        x = self.dropout(x)
+        x = torch.sigmoid(self.fc2(x))
+        return x
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -168,6 +178,98 @@ class AsLModel2(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
+
+class AslLitModel3(pl.LightningModule):
+    def __init__(self, input_shape, num_classes, learning_rate=3e-4):
+        super().__init__()
+        self.save_hyperparameters()
+        self.learning_rate = learning_rate
+        self.num_classes = num_classes
+
+        self.conv1 = nn.Conv3d(1, 64, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm1 = nn.BatchNorm3d(64)
+
+        self.conv2 = nn.Conv3d(64, 64, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool2 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm2 = nn.BatchNorm3d(64)
+
+        self.conv3 = nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool3 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm3 = nn.BatchNorm3d(128)
+
+        self.conv4 = nn.Conv3d(128, 256, kernel_size=(3, 3, 3), stride=1, padding=1)
+        self.max_pool4 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.batch_norm4 = nn.BatchNorm3d(256)
+
+        self.global_pool = nn.AdaptiveMaxPool3d(1)
+        self.fc1 = nn.Linear(256, 512)
+        self.dropout1 = nn.Dropout(0.4)
+        self.dropout2 = nn.Dropout(0.4)
+        self.fc2 = nn.Linear(512, num_classes)
+
+        #n_sizes = self._get_conv_output(input_shape)
+
+        self.accuracy = Accuracy(task="multiclass", num_classes=self.num_classes)
+
+    def _get_conv_output(self, shape):
+        with torch.no_grad():
+            input = torch.autograd.Variable(torch.rand(1, *shape))
+            output = self._feature_extractor(input)
+            return int(numpy.prod(output.size()))
+
+    def _feature_extractor(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = self.pool(x)
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = self.pool(x)
+        return x
+
+    def forward(self, x):
+        x = F.relu(self.batch_norm1(self.max_pool1(self.conv1(x))))
+        x = self.dropout1(x)
+        x = F.relu(self.batch_norm2(self.max_pool2(self.conv2(x))))
+        x = F.relu(self.batch_norm3(self.max_pool3(self.conv3(x))))
+        x = F.relu(self.batch_norm4(self.max_pool4(self.conv4(x))))
+
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        x = self.dropout2(x)
+        x = torch.sigmoid(self.fc2(x))
+        return x
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(y_hat, y)
+        self.log('train_loss', loss)
+        self.log('train_acc', self.accuracy(y_hat, y), prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(y_hat, y)
+        self.log('val_loss', loss, prog_bar=True)
+        self.log('val_acc', self.accuracy(y_hat, y), prog_bar=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.cross_entropy(y_hat, y)
+        self.log('test_loss', loss, prog_bar=True)
+        self.log('test_acc', self.accuracy(y_hat, y), prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}

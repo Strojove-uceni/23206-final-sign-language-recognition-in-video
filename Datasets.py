@@ -5,6 +5,8 @@ import os
 import numpy as np
 from torch.utils.data import Dataset
 from processing import ParquetProcess
+import torch.nn.utils.rnn as rnn_utils
+import torch
 
 
 class ParquetFolderDataset(Dataset):
@@ -194,14 +196,30 @@ class AslNpyDataModule(pl.LightningDataModule):
             print(f"Validation dataset size: {len(self.val_dataset)}")  # Debug print
             print(f"Test dataset size: {len(self.test_dataset)}")  # Debug print
 
+    def custom_collate_fn(self, batch):
+        data, labels = zip(*batch)
+
+        # Find the longest sequence
+        max_len = max([s.shape[3] for s in data])  # Assuming shape [C, H, W, Frames]
+
+        # Pad each sequence to match the longest one
+        padded_data = [torch.nn.functional.pad(torch.from_numpy(s), (0, max_len - s.shape[3])) for s in data]
+        # padded_videos = [torch.nn.functional.pad(torch.from_numpy(frame), (0, 0, 0, 0, 0, 0, 0, max_len - frame.shape[3])) for frame in data]
+
+        data = torch.stack(padded_data)
+        # data = torch.stack(padded_videos)
+        labels = torch.tensor(labels)
+
+        return data, labels
+
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers, collate_fn=self.custom_collate_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers, collate_fn=self.custom_collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_of_workers, collate_fn=self.custom_collate_fn)
 
 
 #Example usage

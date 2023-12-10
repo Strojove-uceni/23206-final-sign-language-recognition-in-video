@@ -7,10 +7,10 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 class ParquetProcess:
-    def __init__(self, path, landmark_id, max_length):
+    def __init__(self, path, landmark_id):
         self.df = self.read_parquet(path)
         self.clean_parquet(False)
-        self.create_tensor(landmark_id, max_length)
+        self.create_tensor(landmark_id)
 
     def read_parquet(self, directory):
         """
@@ -37,7 +37,8 @@ class ParquetProcess:
         Returns:
         clean_df (DataFrame): Cleared dataframe.
         """
-        self.clean_df = self.df.fillna(0)
+        self.clean_df = self.df.dropna()
+        # self.clean_df = self.df.fillna(0)
         if show_df == 1:
             print(f'Here is few lines from parquet file')
             print(self.clean_df.head())
@@ -196,7 +197,7 @@ class ParquetProcess:
 
         plt.close('all')
 
-    def create_tensor(self, selected_landmark_indices, max_tensor_length):
+    def create_tensor(self, selected_landmark_indices):
         """
         Converts the data matrix to a tensor.
         
@@ -220,11 +221,6 @@ class ParquetProcess:
             trsh = self.treshold_matrix(dist)
             rgb_img = self.make_img(trsh, angle, dist)
             stacked_images.append(rgb_img)  # Append the current image to the list of images to be stacked
-
-
-        for frame in range(max_tensor_length - len(stacked_images)):
-            rgb_img = self.make_img(np.zeros(trsh.shape), np.zeros(angle.shape), np.zeros(dist.shape))
-            stacked_images.append(rgb_img)  # Append the current image to the list of images to be stacked        
 
         # Only after all frames have been processed do we concatenate the images
         if stacked_images:  # Check if there are any images collected to stack

@@ -8,24 +8,20 @@ class ParquetData:
   def __init__(self):
     self.data = {}
 
-  def read_all_parquet(self, path, df_list, landmark_id, max_length = 140):
+  def read_all_parquet(self, path, df_list, landmark_id):
     for participant_folder in os.listdir(path + "/train_landmark_files/"):
       path_folder = path + "/train_landmark_files/" + participant_folder + "/"
       for file_name in os.listdir(path_folder):
         file_num = file_name.split(".")[0]
         df_row = df_list[(df_list.participant_id == int(participant_folder)) & (df_list.sequence_id == int(file_num))]
         file_path = path + "/train_landmark_files/" + participant_folder + "/" + file_num + ".parquet"
-        if(df_row.length_frames.values[0] > max_length):
-          print('File was skipped:: ', file_path)
-          continue
-        else:
-          sign_name = df_row.sign.values[0]
-          sequence_name = df_row.sequence_id.values[0]
-          if(not sign_name in list(self.data.keys())):
-            self.data[sign_name] = {}
-          if(not participant_folder in list(self.data[sign_name].keys())):
-            self.data[sign_name][participant_folder] = {}
-          self.data[sign_name][participant_folder][sequence_name] = ParquetProcess(file_path, landmark_id, max_length)
+        sign_name = df_row.sign.values[0]
+        sequence_name = df_row.sequence_id.values[0]
+        if(not sign_name in list(self.data.keys())):
+          self.data[sign_name] = {}
+        if(not participant_folder in list(self.data[sign_name].keys())):
+          self.data[sign_name][participant_folder] = {}
+        self.data[sign_name][participant_folder][sequence_name] = ParquetProcess(file_path, landmark_id)
     print("Data read completed!")
 
   def read_all_tensor(self, path):
@@ -37,7 +33,7 @@ class ParquetData:
         self.data[sign_name][file_name.split(".")[0]] = np.load(path_sign + file_name, allow_pickle=False)
     print("Data read completed!")
 
-  def preprocess_all(self, path, df_list, landmark_id, sign_list, max_length = 140):
+  def preprocess_all(self, path, df_list, landmark_id, sign_list):
     """
     Reads all parquet files in directory, shorter than max_length, optionally sorts and saves numpy tensors made of parquet.
     :param path: Path to data folder
@@ -56,14 +52,10 @@ class ParquetData:
         file_num = file_name.split(".")[0]
         df_row = df_list[(df_list.participant_id == int(participant_folder)) & (df_list.sequence_id == int(file_num))]
         file_path = path + "/train_landmark_files/" + participant_folder + "/" + file_num + ".parquet"
-        if(df_row.length_frames.values[0] > max_length):
-          print('File was skipped:: ', file_path)
-          continue
-        else:
-          sign_name = df_row.sign.values[0]
-          if sign_name in sign_list:
-            readed_data = ParquetProcess(file_path, landmark_id, max_length)
-            self.save_tensor(path_tensor, sign_name, readed_data.tensor, count)
+        sign_name = df_row.sign.values[0]
+        if sign_name in sign_list:
+          readed_data = ParquetProcess(file_path, landmark_id)
+          self.save_tensor(path_tensor, sign_name, readed_data.tensor, count)
     print("Data preprocess completed!")
 
   def save_tensor(self, path, sign, tensor, count):
@@ -98,7 +90,7 @@ df_train = pd.read_csv(path + "/train_mod.csv", sep=",")
 df_train.head()
 
 data_load = ParquetData()
-data_load.preprocess_all(path, df_train, selected_landmark_indices, signs,140)
+data_load.preprocess_all(path, df_train, selected_landmark_indices, signs)
 # data_load.read_all_parquet(path, df_train, selected_landmark_indices, 140)
 
 

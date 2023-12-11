@@ -4,6 +4,8 @@ from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
 import cv2
 from dfs_results import dfs_result
+import torch
+from torch.nn import functional as F
 
 
 class ParquetToMatrix():
@@ -12,7 +14,8 @@ class ParquetToMatrix():
         self.max_length = max_length
         self.df = self.read_parquet(path)
         # self.create_matrix(self.df, landmark_id)
-        self.tssi_preprocess()
+        self.tssi_preprocess(max_length)
+        self.preprocess_succes = True
 
 
     def read_parquet(self, directory):
@@ -103,32 +106,59 @@ class ParquetToMatrix():
         if max_val != min_val:
             self.concatenated_matrix = (self.concatenated_matrix - min_val) / (max_val - min_val)
 
-    def tssi_preprocess(self):
+    def tssi_preprocess(self, max_length):
         frames = self.df.frame.unique()
-        npy_preprocess = np.empty((len(frames),len(dfs_result),3))
+        npy_preprocess = np.empty((max_length, len(dfs_result), 3))
         npy_preprocess[:] = np.nan
 
-        for frame_id in range(len(frames)):
-            frame = frames[frame_id]
-            df_frame = self.df[self.df.frame == frame]
+        self.df = self.df.sort_values(by=['frame'])
 
-            for dfs_landmark_id in range(len(dfs_result)):
-                dfs_landmark = dfs_result[dfs_landmark_id]
-                (landmark, body_part) = dfs_landmark.split("-")
-                df_selected_row = df_frame[(df_frame.landmark_index == int(landmark)) & (df_frame.type == body_part)]
-                if(len(df_selected_row) == 0):
-                    df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
-                    if(len(df_selected_row) == 0):
-                        df_selected_row = df_selected_row._append({"frame": frame_id, "row_id": 0, "type": body_part, "landmark_index": landmark, "x": 0, "y": 0, "z": 0}, ignore_index=True)
+        right_hand_nan_count = 0
+        left_hand_nan_count = 0
+        landmark_eyebrow_id = []
+        for dfs_landmark_id in range(len(dfs_result)):
+            dfs_landmark = dfs_result[dfs_landmark_id]
+            (landmark, body_part) = dfs_landmark.split("-")
+            if(int(landmark) == 65 or int(landmark) == 295):
+                # store id of eyebrows
+                landmark_eyebrow_id += [dfs_landmark_id]
+            df_landmark = self.df[(self.df.landmark_index == int(landmark)) & (self.df.type == body_part)]
+            xyz_cord = np.array([df_landmark.x.values, df_landmark.y.values, df_landmark.z.values])
+            if(np.isnan(np.min(xyz_cord))):
+                if(dfs_landmark_id < 21):
+                    right_hand_nan_count += np.sum(np.isnan(xyz_cord))
+                elif(dfs_landmark_id > 41):
+                    left_hand_nan_count += np.sum(np.isnan(xyz_cord))
 
-                if(df_selected_row.x.values[0] == np.nan or df_selected_row.y.values[0] == np.nan or df_selected_row.z.values[0] == np.nan):
-                    df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
-        
-                df_selected_row = df_selected_row.fillna(0)
-                # zápis dat
-                npy_preprocess[frame_id, dfs_landmark_id, :] = np.array([df_selected_row.x.values[0], df_selected_row.y.values[0], df_selected_row.z.values[0]])
+                nan_mask = np.isnan(xyz_cord)
+                rows_without_nan = ~nan_mask.any(axis=0)
+                xyz_without_nan = xyz_cord[:, rows_without_nan]
+                if(xyz_without_nan.shape[1] == 0):
+                    xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='nearest').numpy()
+                else: 
+                    xyz_interp = F.interpolate(torch.tensor(xyz_without_nan)[None, :], size=max_length, mode='nearest').numpy()
+                xyz_transform = np.squeeze(xyz_interp, axis=0).T
+            else:
+                xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='nearest').numpy()
+                xyz_transform = np.squeeze(xyz_interp, axis=0).T
 
-        self.concatenated_matrix = npy_preprocess
+            npy_preprocess[:, dfs_landmark_id, :] = np.copy(xyz_transform)
+
+        if(len(landmark_eyebrow_id) == 2):
+            norm_point = (npy_preprocess[:, landmark_eyebrow_id[0], :] + npy_preprocess[:, landmark_eyebrow_id[1], :])/2
+        else:
+            self.preprocess_succes = False
+
+        for dfs_landmark_id in range(len(dfs_result)):
+            npy_preprocess[:, dfs_landmark_id, :] = npy_preprocess[:, dfs_landmark_id, :] - norm_point
+
+        if(left_hand_nan_count < right_hand_nan_count):
+            npy_hand_removed = npy_preprocess[:, 21:64, :]
+        else:
+            npy_hand_removed = npy_preprocess[:, 0:42, :]
+
+        self.concatenated_matrix = npy_hand_removed
+
 
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]

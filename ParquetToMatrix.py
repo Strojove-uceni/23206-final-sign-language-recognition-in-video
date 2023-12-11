@@ -3,6 +3,7 @@ import numpy as np
 from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
 import cv2
+from dfs_results import dfs_result
 
 
 class ParquetToMatrix():
@@ -101,7 +102,32 @@ class ParquetToMatrix():
         if max_val != min_val:
             self.concatenated_matrix = (self.concatenated_matrix - min_val) / (max_val - min_val)
 
+    def tssi_preprocess(self):
+        frames = self.df.frame.unique()
+        npy_preprocess = np.empty((len(frames),len(dfs_result),3))
+        npy_preprocess[:] = np.nan
 
+        for frame_id in range(len(frames)):
+            frame = frames[frame_id]
+            df_frame = self.df[self.df.frame == frame]
 
-selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
-                             152, 155, 337, 299, 333, 69, 104, 68, 398]
+            for dfs_landmark_id in range(len(dfs_result)):
+                dfs_landmark = dfs_result[dfs_landmark_id]
+                (landmark, body_part) = dfs_landmark.split("-")
+                df_selected_row = df_frame[(df_frame.landmark_index == int(landmark)) & (df_frame.type == body_part)]
+                if(len(df_selected_row) == 0):
+                    df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
+                    if(len(df_selected_row) == 0):
+                        df_selected_row = df_selected_row._append({"frame": frame_id, "row_id": 0, "type": body_part, "landmark_index": landmark, "x": 0, "y": 0, "z": 0}, ignore_index=True)
+
+                if(df_selected_row.x.values[0] == np.nan or df_selected_row.y.values[0] == np.nan or df_selected_row.z.values[0] == np.nan):
+                    df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
+        
+                df_selected_row = df_selected_row.fillna(0)
+                # zápis dat
+                npy_preprocess[frame_id, dfs_landmark_id, :] = np.array([df_selected_row.x.values[0], df_selected_row.y.values[0], df_selected_row.z.values[0]])
+
+        self.concatenated_matrix = npy_preprocess
+
+selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
+                             295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]

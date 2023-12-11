@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import shutil
+from dfs_results import dfs_result
 
 
 class ParquetData:
@@ -68,34 +69,13 @@ path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs"
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
 
-dfs_result = [
-    # "1-body",
-    # "11-body", "13-body",
-    "0-right_hand", "1-right_hand", "2-right_hand", "3-right_hand", "4-right_hand",
-    "5-right_hand", "6-right_hand", "7-right_hand", "8-right_hand",
-    "9-right_hand", "10-right_hand", "11-right_hand", "12-right_hand",
-    "13-right_hand", "14-right_hand", "15-right_hand", "16-right_hand",
-    "17-right_hand","18-right_hand", "19-right_hand", "20-right_hand",
-    "14-face", "324-face", "76-face", "13-face", "0-face",
-    "155-face", "145-face", "7-face", "159-face",
-    "65-face", "53-face", "52-face", "46-face",
-    "382-face", "374-face", "249-face", "385-face",
-    "295-face", "283-face", "282-face", "276-face",
-    # "12-body", "14-body",
-    "0-left_hand", "1-left_hand", "2-left_hand", "3-left_hand", "4-left_hand",
-    "5-left_hand", "6-left_hand", "7-left_hand", "8-left_hand",
-    "9-left_hand", "10-left_hand", "11-left_hand", "12-left_hand",
-    "13-left_hand", "14-left_hand", "15-left_hand", "16-left_hand",
-    "17-left_hand", "18-left_hand", "19-left_hand", "20-left_hand"]
-
 signs=['airplane', 'alligator', 'any', 'apple', 'balloon', 'bath',
        'black', 'drink', 'drop', 'dry', 'duck', 'ear', 'empty', 'face', 'find', 'fine', 'finger', 'garbage', 'girl', 'goose']
 df_train = pd.read_csv(path + "/train_mod.csv", sep=",")
 
-# data_load = ParquetData()
-# data_load.preprocess_all(path, df_train, selected_landmark_indices, signs, 140)
+data_load = ParquetData()
+data_load.preprocess_all(path, df_train, selected_landmark_indices, signs, 140)
 
-############################################################################################
 
 df_line = df_train[df_train.index == 0]
 
@@ -126,27 +106,33 @@ for frame_id in range(len(frames)):
         (landmark, body_part) = dfs_landmark.split("-")
         df_selected_row = df_frame[(df_frame.landmark_index == int(landmark)) & (df_frame.type == body_part)]
         if(len(df_selected_row) == 0):
-            print(df_frame[(df_frame.type == body_part)])
-            # if("body" == body_part):
-            #     df_selected_row = df_frame[(df_frame.landmark_index == -1) & (df_frame.type == body_part)]
-            # else:
-            #     df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
             df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
+            if(len(df_selected_row) == 0):
+                df_selected_row = df_selected_row._append({"frame": frame_id, "row_id": 0, "type": body_part, "landmark_index": landmark, "x": 0, "y": 0, "z": 0}, ignore_index=True)
 
         if(df_selected_row.x.values[0] == np.nan or df_selected_row.y.values[0] == np.nan or df_selected_row.z.values[0] == np.nan):
             df_selected_row = df_frame[(df_frame.landmark_index == 0) & (df_frame.type == body_part)]
         
+        df_selected_row = df_selected_row.fillna(0)
+        
         # uložit data
         npy_preprocess[frame_id, dfs_landmark_id, :] = np.array([df_selected_row.x.values[0], df_selected_row.y.values[0], df_selected_row.z.values[0]])
 
+# Odebrání nulových landmark
+# matrix_to_del = []
+# for dfs_landmark_id in range(len(dfs_result)):
+#     if(np.sum(npy_preprocess[:, dfs_landmark_id, :]) == 0):
+#         matrix_to_del
+#         npy_preprocess = np.delete(npy_preprocess, dfs_landmark_id, 1)
 
 print(npy_preprocess)
 print(npy_preprocess.shape)
 print("NaN? ", np.isnan(np.min(npy_preprocess)))
+print("Zeros: ", np.count_nonzero(npy_preprocess==0))
 
-for dfs_landmark_id in range(len(dfs_result)):
-    print("Landmark: ", dfs_result[dfs_landmark_id])
-    print(npy_preprocess[:, dfs_landmark_id, :])
+# for dfs_landmark_id in range(len(dfs_result)):
+#     print("Landmark: ", dfs_result[dfs_landmark_id])
+#     print(npy_preprocess[:, dfs_landmark_id, :])
 
 
     # print(selected_rows)

@@ -11,7 +11,8 @@ class ParquetToMatrix():
         self.concatenated_matrix = []
         self.max_length = max_length
         self.df = self.read_parquet(path)
-        self.create_matrix(self.df, landmark_id)
+        # self.create_matrix(self.df, landmark_id)
+        self.tssi_preprocess()
 
 
     def read_parquet(self, directory):

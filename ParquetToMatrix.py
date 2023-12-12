@@ -134,30 +134,30 @@ class ParquetToMatrix():
                 rows_without_nan = ~nan_mask.any(axis=0)
                 xyz_without_nan = xyz_cord[:, rows_without_nan]
                 if(xyz_without_nan.shape[1] == 0):
-                    xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='nearest').numpy()
+                    xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='linear').numpy()
                 else: 
-                    xyz_interp = F.interpolate(torch.tensor(xyz_without_nan)[None, :], size=max_length, mode='nearest').numpy()
+                    xyz_interp = F.interpolate(torch.tensor(xyz_without_nan)[None, :], size=max_length, mode='linear').numpy()
                 xyz_transform = np.squeeze(xyz_interp, axis=0).T
             else:
-                xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='nearest').numpy()
+                xyz_interp = F.interpolate(torch.tensor(xyz_cord)[None, :], size=max_length, mode='linear').numpy()
                 xyz_transform = np.squeeze(xyz_interp, axis=0).T
 
             npy_preprocess[:, dfs_landmark_id, :] = np.copy(xyz_transform)
 
-        if(len(landmark_eyebrow_id) == 2):
-            norm_point = (npy_preprocess[:, landmark_eyebrow_id[0], :] + npy_preprocess[:, landmark_eyebrow_id[1], :])/2
-        else:
-            self.preprocess_succes = False
+        # if(len(landmark_eyebrow_id) == 2):
+        #     norm_point = (npy_preprocess[:, landmark_eyebrow_id[0], :] + npy_preprocess[:, landmark_eyebrow_id[1], :])/2
+        # else:
+        #     self.preprocess_succes = False
 
-        for dfs_landmark_id in range(len(dfs_result)):
-            npy_preprocess[:, dfs_landmark_id, :] = npy_preprocess[:, dfs_landmark_id, :] - norm_point
+        # for dfs_landmark_id in range(len(dfs_result)):
+        #     npy_preprocess[:, dfs_landmark_id, :] = npy_preprocess[:, dfs_landmark_id, :] - norm_point
 
-        if(left_hand_nan_count < right_hand_nan_count):
-            npy_hand_removed = npy_preprocess[:, 21:64, :]
-        else:
-            npy_hand_removed = npy_preprocess[:, 0:42, :]
+        # if(left_hand_nan_count < right_hand_nan_count):
+        #     npy_hand_removed = npy_preprocess[:, 21:64, :]
+        # else:
+        #     npy_hand_removed = npy_preprocess[:, 0:42, :]
 
-        self.concatenated_matrix = npy_hand_removed
+        self.concatenated_matrix = np.nan_to_num(npy_preprocess, copy=True, nan=0)
 
 
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,

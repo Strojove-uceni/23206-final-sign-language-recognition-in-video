@@ -75,8 +75,10 @@ path = "C:/Skoda_Digital/Materials/Documents_FJFI/SU2/asl-signs"
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
 
-signs=['airplane', 'alligator', 'any', 'apple', 'balloon', 'bath',
-       'black', 'drink', 'drop', 'dry', 'duck', 'ear', 'empty', 'face', 'find', 'fine', 'finger', 'garbage', 'girl', 'goose']
+# signs=['airplane', 'alligator', 'any', 'apple', 'balloon', 'bath',
+#        'black', 'drink', 'drop', 'dry', 'duck', 'ear', 'empty', 'face', 'find', 'fine', 'finger', 'garbage', 'girl', 'goose']
+
+signs=['bad', 'fall', 'not', 'go', 'can', 'wet', 'grandma', 'grandpa', 'look', 'no']
 df_train = pd.read_csv(path + "/train_mod.csv", sep=",")
 
 data_load = ParquetData()

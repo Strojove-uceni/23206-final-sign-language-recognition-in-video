@@ -6,6 +6,7 @@ import numpy as np
 import time
 from threading import Thread
 from processing_v2 import ParquetProcess
+from ParquetToMatrix import ParquetToMatrix
 
 
 class WebcamStream:
@@ -58,7 +59,7 @@ class WebcamStream:
         self.stopped = True
 
 class LiveFeed:
-    def __init__(self, selected_landmark_indices, depth=100):
+    def __init__(self, selected_landmark_indices, depth=140):
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_hands = mp.solutions.hands
         self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1)
@@ -84,8 +85,9 @@ class LiveFeed:
                 landmark = face_results.multi_face_landmarks[0].landmark[idx]
                 landmarks_list.append({
                     'frame': frame_number,
-                    'row_id': f'{frame_number}-face-{idx}',
                     'type': 'face',
+                    'row_id': f'{frame_number}-face-{idx}',
+
                     'landmark_index': idx,
                     'x': landmark.x,
                     'y': landmark.y,
@@ -98,8 +100,9 @@ class LiveFeed:
                 for idx, landmark in enumerate(hand_landmarks.landmark):
                     landmarks_list.append({
                         'frame': frame_number,
-                        'row_id': f'{frame_number}-hand{hand_no}-{idx}',
                         'type': 'right_hand',
+                        'row_id': f'{frame_number}-hand{hand_no}-{idx}',
+
                         'landmark_index': idx,
                         'x': landmark.x,
                         'y': landmark.y,
@@ -109,64 +112,62 @@ class LiveFeed:
         # Create a DataFrame from the list of landmarks
         landmarks_df = pd.DataFrame(landmarks_list)
 
+
         return landmarks_df
 
-    def live_gesture(self, dataframe, frame_number):
-        coordinates=parquet_proccessor.extract_landmarks(dataframe,frame_number,self.selected_landmark_indices)
-        dist_matrix=parquet_proccessor.distance(coordinates)
-        angle_marix=parquet_proccessor.angle_matrix(coordinates)
-        trsh_matrix=parquet_proccessor.treshold_matrix(dist_matrix)
-        rgb=parquet_proccessor.make_img(trsh_matrix,angle_marix,dist_matrix)
+    def live_gesture(self, dataframe, max_length):
+        """
+        This function performs processing on an input dataframe for live mode.
+        It's supposed to be used for real-time or live video feeds.
+
+        :param dataframe: The input DataFrame to perform the gesture analysis on.
+        :param max_length: The maximum length of the output array.
+        :return: The processed array with shape (max_length, len(dfs_result), 3)
+        """
+
+        # 1. Cleaning the DataFrame.
+        # Here, we are not visualizing the DataFrame, so passing False.
+        self.df = dataframe
+        parquet_proccessor.clean_parquet(show_df=False)
+
+        # 2. Now we create the matrix from the DataFrame for max_length.
+        rgb = parquet_proccessor.tssi_preprocess(self.df, max_length)
         plt.imshow(rgb)
         plt.show(block=False)
         plt.pause(0.01)  # Pause to display the current frame's matrix
         plt.clf()
-        return rgb
 
 
-    def tensor_creation(self, image):
-        image_array = np.array(image)
-        if not self.initialized:
-            # Initialize the tensor with the first image shape and set the initialized flag
-            m, n, channels = image_array.shape
-            self.tensor = np.zeros((m, n, channels * self.depth))
-            for i in range(self.depth):
-                self.tensor[:, :, i*channels:(i+1)*channels] = image_array
-            self.initialized = True
-        else:
-            m, n, _ = self.tensor.shape[:3]  # Current tensor dimensions
-            if image_array.shape[0] == m and image_array.shape[1] == n:
-                # Shift the tensor to remove the oldest image and make space for the new one
-                self.tensor = np.roll(self.tensor, -3, axis=2)
-                # Insert the new image at the 'freshest' end of the tensor
-                self.tensor[:, :, -3:] = image_array
-            else:
-                print("Image dimensions do not match tensor dimensions, skipping this image.")
 
 
-        return self.tensor
 
-selected_landmark_indices = [33, 133, 159, 263, 46, 70, 4, 454, 234, 10, 338, 297, 332, 61, 291, 0, 78, 14, 317,
-                             152, 155, 337, 299, 333, 69, 104, 68, 398]
-parquet_proccessor=ParquetProcess()
-live_feed=LiveFeed(selected_landmark_indices,depth=500)
+
+
+selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
+                             295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
+parquet_proccessor = ParquetToMatrix(selected_landmark_indices, max_length=96)
+live_feed=LiveFeed(selected_landmark_indices,depth=96)
 webcam_stream = WebcamStream(stream_id=0)  # 0 id for main camera
 webcam_stream.start()
 # processing frames in input stream
 num_frames_processed = 0
+empty_df = pd.DataFrame()
 start = time.time()
 while True :
     if webcam_stream.stopped is True :
         break
     else :
-        frame = webcam_stream.read()
-        lnd=live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
-        print(lnd)
-        rgb=live_feed.live_gesture(lnd,num_frames_processed)
-        tensor=live_feed.tensor_creation(rgb)
-        print(tensor.shape)
-        if num_frames_processed>60:
-            parquet_proccessor.plot_3d_cube_with_transparency(tensor)
+        if num_frames_processed <= 96:
+            frame = webcam_stream.read()
+            lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
+            extracted_data = pd.concat([empty_df, lnd])
+            empty_df = extracted_data
+        else:
+            live_feed.live_gesture(extracted_data, 96)
+
+
+
+
     num_frames_processed += 1
     # displaying frame
     #cv2.imshow('frame' , frame)

@@ -7,6 +7,7 @@ import time
 from threading import Thread
 from processing_v2 import ParquetProcess
 from ParquetToMatrix import ParquetToMatrix
+from matplotlib import animation
 
 
 class WebcamStream:
@@ -115,7 +116,7 @@ class LiveFeed:
 
         return landmarks_df
 
-    def live_gesture(self, dataframe, max_length):
+    def live_gesture(self, parquet_proccessor, dataframe, max_length):
         """
         This function performs processing on an input dataframe for live mode.
         It's supposed to be used for real-time or live video feeds.
@@ -127,25 +128,20 @@ class LiveFeed:
 
         # 1. Cleaning the DataFrame.
         # Here, we are not visualizing the DataFrame, so passing False.
-        self.df = dataframe
-        parquet_proccessor.clean_parquet(show_df=False)
+        parquet_proccessor.df = dataframe
+        # parquet_proccessor.clean_parquet(show_df=False)
 
         # 2. Now we create the matrix from the DataFrame for max_length.
-        rgb = parquet_proccessor.tssi_preprocess(self.df, max_length)
-        plt.imshow(rgb)
+        parquet_proccessor.tssi_preprocess(max_length)
+        plt.imshow(parquet_proccessor.concatenated_matrix)
         plt.show(block=False)
-        plt.pause(0.01)  # Pause to display the current frame's matrix
+        plt.pause(0.1)  # Pause to display the current frame's matrix
         plt.clf()
-
-
-
-
-
 
 
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
-parquet_proccessor = ParquetToMatrix(selected_landmark_indices, max_length=96)
+parquet_proccessor = ParquetToMatrix(None, selected_landmark_indices, max_length=96)
 live_feed=LiveFeed(selected_landmark_indices,depth=96)
 webcam_stream = WebcamStream(stream_id=0)  # 0 id for main camera
 webcam_stream.start()
@@ -161,12 +157,9 @@ while True :
             frame = webcam_stream.read()
             lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
             extracted_data = pd.concat([empty_df, lnd])
-            empty_df = extracted_data
+            empty_df = extracted_data.copy()
         else:
-            live_feed.live_gesture(extracted_data, 96)
-
-
-
+            live_feed.live_gesture(parquet_proccessor, extracted_data, 96)
 
     num_frames_processed += 1
     # displaying frame

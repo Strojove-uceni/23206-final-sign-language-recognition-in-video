@@ -21,6 +21,7 @@ from Dataset import AslMatrixDataModule
 from pytorch_lightning.callbacks import StochasticWeightAveraging
 from ResNet_custom import ImageClassifier, ResNet50
 from pytorch_lightning.callbacks import EarlyStopping
+from test_live import  LiveFeedAI
 
 
 class WebcamStream:
@@ -90,55 +91,52 @@ class LiveFeed:
         face_results = self.face_mesh.process(image_rgb)
         hand_results = self.hands.process(image_rgb)
 
-        # Initialize a list to store the data for DataFrame creation
-        landmarks_list = []
+        # Initialize a dictionary to store the data for DataFrame creation.
+        # Prepopulate it with all potential landmarks as keys, with values set to NaN.
+        total_landmarks = 468 + (21 * 2)  # 468 face landmarks, 42 hand landmarks (21 per hand)
+        landmarks_dict = {idx: {
+            'frame': frame_number,
+            'type': np.nan,
+            'row_id': np.nan,
+            'landmark_index': idx,
+            'x': np.nan,
+            'y': np.nan,
+            'z': np.nan
+        } for idx in range(total_landmarks)}
 
         # Extract face landmarks if any faces are detected
         if face_results.multi_face_landmarks:
-            for idx in self.selected_landmark_indices:  # Loop through your predefined selected indices
+            for idx in self.selected_landmark_indices:  # Loop through predefined selected indices
                 landmark = face_results.multi_face_landmarks[0].landmark[idx]
-                landmarks_list.append({
+                landmarks_dict[idx] = {
                     'frame': frame_number,
                     'type': 'face',
                     'row_id': f'{frame_number}-face-{idx}',
-
                     'landmark_index': idx,
                     'x': landmark.x,
                     'y': landmark.y,
                     'z': landmark.z
-                })
+                }
 
         # Extract hand landmarks if hands are detected
         if hand_results.multi_hand_landmarks:
             for hand_no, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
+                hand_type = 'left_hand' if hand_no == 0 else 'right_hand'
                 for idx, landmark in enumerate(hand_landmarks.landmark):
-                    landmarks_list.append({
-                        'frame': frame_number,
-                        'type': 'right_hand',
-                        'row_id': f'{frame_number}-hand{hand_no}-{idx}',
+                    row_id = f'{frame_number}-{hand_type}-{idx}'
 
+                    # Offset idx by 468 for hand landmarks to avoid key collision with face landmarks
+                    landmarks_dict[idx + 468] = {
+                        'frame': frame_number,
+                        'type': hand_type,
                         'landmark_index': idx,
+                        'row_id': row_id,
                         'x': landmark.x,
                         'y': landmark.y,
                         'z': landmark.z
-                    })
-        if hand_results.multi_hand_landmarks:
-            for hand_no, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
-                for idx, landmark in enumerate(hand_landmarks.landmark):
-                    landmarks_list.append({
-                        'frame': frame_number,
-                        'type': 'left_hand',  # this line has to change
-                        'row_id': f'{frame_number}-hand{hand_no}-{idx}',
-                        'landmark_index': idx,
-                        'x': landmark.x,
-                        'y': landmark.y,
-                        'z': landmark.z
-                    })
+                    }
 
-        # Create a DataFrame from the list of landmarks
-        landmarks_df = pd.DataFrame(landmarks_list)
-
-
+        landmarks_df = pd.DataFrame(landmarks_dict.values())
         return landmarks_df
 
     def live_gesture(self, parquet_proccessor, dataframe, max_length):
@@ -158,72 +156,61 @@ class LiveFeed:
 
         # 2. Now we create the matrix from the DataFrame for max_length.
         parquet_proccessor.tssi_preprocess(max_length)
-        plt.imshow(parquet_proccessor.concatenated_matrix)
-        plt.show(block=False)
-        plt.pause(0.01)  # Pause to display the current frame's matrix
-        plt.clf()
-        return parquet_proccessor.concatenated_matrix
+
+        return (parquet_proccessor.concatenated_matrix - parquet_proccessor.concatenated_matrix.min())/(parquet_proccessor.concatenated_matrix.max()-parquet_proccessor.concatenated_matrix.min())
 
 
-checkpoint_path = r'C:\Users\drend\Desktop\SU2\good models\2DCNN_10_class_84_prct.ckpt'
+# Load model
+checkpoint_path = r'C:\Users\drend\Desktop\SU2\ResNet_custom_250cl.ckpt'
+sign_list = ['finger', 'garbage', 'girl', 'goo', 'goose', 'yesterday', 'yourself', 'yucky', 'zebra', 'zipper']
+model_path = r'C:\Users\drend\Desktop\SU2\good models\2DCNN_10_class_84_prct.ckpt'
 model = AslLitModelMatrix2(10)
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+checkpoint = torch.load(model_path)
+model.load_state_dict(checkpoint['state_dict'])
+model.to(device)   # Load the model to the correct device
 model.eval()
-model.load_state_dict(torch.load(checkpoint_path, map_location='cpu'), strict=False)
-model.to(device)
 
+# Indexes of keypoints to use
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
 parquet_proccessor = ParquetToMatrix(None, selected_landmark_indices, max_length=96)
 live_feed=LiveFeed(selected_landmark_indices,depth=96)
-webcam_stream = WebcamStream(stream_id=0)  # 0 id for main camera
+
+webcam_stream = WebcamStream(stream_id=0)  # 0 for main camera
 webcam_stream.start()
-# processing frames in input stream
+
 num_frames_processed = 0
-empty_df = pd.DataFrame()
-last_prediction_time = time.time()
+empty_df = pd.DataFrame(columns=['frame', 'type', 'landmark_index', 'index', 'x', 'y', 'z'])
 
-while True :
-    if webcam_stream.stopped is True :
-        break
-    else:
-        if num_frames_processed <= 96:
-            frame = webcam_stream.read()
-            lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
-            extracted_data = pd.concat([empty_df, lnd])
-            empty_df = extracted_data.copy()
-        else:
-            frame = webcam_stream.read()
-            gesture = live_feed.live_gesture(parquet_proccessor, extracted_data, 96)
-            gesture = (gesture-gesture.min())/(gesture.max()-gesture.min())
-            gesture = np.transpose(gesture, (2, 0, 1))
-
-            gesture = torch.from_numpy(gesture).float()
-            gesture = torch.unsqueeze(gesture, dim=0)
-            gesture = gesture.to(device)
-            lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
-            # Drop the row from extracted_data before concatenating
-            extracted_data = extracted_data.drop(extracted_data.index[0])
-            extracted_data = pd.concat([extracted_data, lnd])
-
-            current_time = time.time()   # Get the current time
-            if current_time - last_prediction_time >= 1:   # If at least 1 second has passed
-                with torch.no_grad():
-                    output = model(gesture)
-                    probabilities = torch.nn.functional.softmax(output, dim=1)
-                    predicted_class = torch.argmax(probabilities)
-                    print(predicted_class.item())
-
-                    # Update the last prediction time to the current time
-                    last_prediction_time = current_time
-
-
+while num_frames_processed < 96:  # Collect only 96 frames
+    frame = webcam_stream.read()
+    cv2.imshow('Webcam Stream', frame)
+    cv2.waitKey(1)
+    lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
+    extracted_data = pd.concat([empty_df, lnd])
+    empty_df = extracted_data.copy()
     num_frames_processed += 1
-    # displaying frame
-    #cv2.imshow('frame' , frame)
-    key = cv2.waitKey(1)
-    if key == ord('q'):
-        break
-end = time.time()
-webcam_stream.stop() # stop the webcam stream
+
+# Stop the webcam stream after collecting the frames
+webcam_stream.stop()
+cv2.destroyAllWindows()
+
+# Process collected gesture
+gesture = live_feed.live_gesture(parquet_proccessor, extracted_data, 96)
+gesture = np.transpose(gesture, (2,0,1))
+gesture = torch.from_numpy(gesture).float()
+gesture = torch.unsqueeze(gesture, dim=0)
+gesture = gesture.to(device)
+
+# Get model prediction
+with torch.no_grad():
+    output = model(gesture)
+    probabilities = torch.nn.functional.softmax(output, dim=1)
+    _, top_pred = torch.topk(probabilities, 1)  # Get the top prediction
+
+# Print the top prediction and corresponding probability
+prediction = top_pred[0].item()
+probability = probabilities[0][prediction].item()
+print(f"Prediction: {sign_list[prediction]}, Probability: {probability}")

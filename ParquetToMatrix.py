@@ -12,11 +12,11 @@ class ParquetToMatrix():
     def __init__(self, path, landmark_id, max_length):
         self.concatenated_matrix = []
         self.max_length = max_length
+        self.preprocess_succes = True
         if(not path is None):
             self.df = self.read_parquet(path)
             # self.create_matrix(self.df, landmark_id)
             self.tssi_preprocess(max_length)
-            self.preprocess_succes = True
 
 
     def read_parquet(self, directory):
@@ -160,6 +160,8 @@ class ParquetToMatrix():
         #     npy_hand_removed = npy_preprocess[:, 0:42, :]
 
         self.concatenated_matrix = np.nan_to_num(npy_preprocess, copy=True, nan=0)
+        if(np.isnan(np.min(self.concatenated_matrix))):
+           self.preprocess_succes = False
 
 
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,

@@ -25,7 +25,7 @@ class ParquetData:
                 df_row = csv_list[(csv_list.participant_id == int(participant_folder)) & (csv_list.sequence_id == int(file_num))]
                 file_path = path + "/train_landmark_files/" + participant_folder + "/" + file_num + ".parquet"
                 df = pd.read_parquet(file_path)
-                df = df.dropna()
+                # df = df.dropna()
                 unique_frames = len(df['frame'].unique())
                 if (unique_frames > max_length):
                     print('File was skipped:: ', file_path)
@@ -42,7 +42,7 @@ class ParquetData:
                                 self.save_tensor(path_matrix, sign_name, readed_data.concatenated_matrix, count)
                             else:
                                 print('File preprocessing failed:: ', file_path)
-            print("Data preprocess completed!")
+        print("Data preprocess completed!")
 
     def preprocess(df):
         print(df)

@@ -23,3 +23,8 @@ Vysvětlení metod a postupů je k dispozici v souboru SU2_Final_Notebook
 - AslCnnRnnModel
 
 Jmenované modely jsou nejúspěšnějšími pokusy (pro více informaci viz `Final_SU2_notebook.ipynb`).
+
+## Inference:
+- Nastavit `checkpoint_path` ve skriptu `LiveFeedv4.py`.
+- Napsat slova, na které je model natrénovaný do `sign_list`.
+- Spustit skript `LiveFeedv4.py`.

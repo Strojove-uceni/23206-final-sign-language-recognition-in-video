@@ -2,12 +2,25 @@ import matplotlib.pyplot as plt
 import mediapipe as mp
 import pandas as pd
 import cv2
+import torch
 import numpy as np
 import time
 from threading import Thread
 from processing_v2 import ParquetProcess
 from ParquetToMatrix import ParquetToMatrix
 from matplotlib import animation
+import pytorch_lightning as pl
+import torch.cuda
+import time
+import wandb
+from pytorch_lightning.loggers import WandbLogger
+from Models import AslLitModelMatrix, AslLitModelMatrix2
+from pytorch_lightning.tuner import Tuner
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from Dataset import AslMatrixDataModule
+from pytorch_lightning.callbacks import StochasticWeightAveraging
+from ResNet_custom import ImageClassifier, ResNet50
+from pytorch_lightning.callbacks import EarlyStopping
 
 
 class WebcamStream:
@@ -109,6 +122,18 @@ class LiveFeed:
                         'y': landmark.y,
                         'z': landmark.z
                     })
+        if hand_results.multi_hand_landmarks:
+            for hand_no, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
+                for idx, landmark in enumerate(hand_landmarks.landmark):
+                    landmarks_list.append({
+                        'frame': frame_number,
+                        'type': 'left_hand',  # this line has to change
+                        'row_id': f'{frame_number}-hand{hand_no}-{idx}',
+                        'landmark_index': idx,
+                        'x': landmark.x,
+                        'y': landmark.y,
+                        'z': landmark.z
+                    })
 
         # Create a DataFrame from the list of landmarks
         landmarks_df = pd.DataFrame(landmarks_list)
@@ -135,9 +160,18 @@ class LiveFeed:
         parquet_proccessor.tssi_preprocess(max_length)
         plt.imshow(parquet_proccessor.concatenated_matrix)
         plt.show(block=False)
-        plt.pause(0.1)  # Pause to display the current frame's matrix
+        plt.pause(0.01)  # Pause to display the current frame's matrix
         plt.clf()
+        return parquet_proccessor.concatenated_matrix
 
+
+checkpoint_path = r'C:\Users\drend\Desktop\SU2\good models\2DCNN_10_class_84_prct.ckpt'
+model = AslLitModelMatrix2(10)
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model.eval()
+model.load_state_dict(torch.load(checkpoint_path, map_location='cpu'), strict=False)
+model.to(device)
 
 selected_landmark_indices = [46, 52, 53, 65, 7, 159, 155, 145, 0,
                              295, 283, 282, 276, 382, 385, 249, 374, 13, 324, 76, 14]
@@ -148,18 +182,42 @@ webcam_stream.start()
 # processing frames in input stream
 num_frames_processed = 0
 empty_df = pd.DataFrame()
-start = time.time()
+last_prediction_time = time.time()
+
 while True :
     if webcam_stream.stopped is True :
         break
-    else :
+    else:
         if num_frames_processed <= 96:
             frame = webcam_stream.read()
             lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
             extracted_data = pd.concat([empty_df, lnd])
             empty_df = extracted_data.copy()
         else:
-            live_feed.live_gesture(parquet_proccessor, extracted_data, 96)
+            frame = webcam_stream.read()
+            gesture = live_feed.live_gesture(parquet_proccessor, extracted_data, 96)
+            gesture = (gesture-gesture.min())/(gesture.max()-gesture.min())
+            gesture = np.transpose(gesture, (2, 0, 1))
+
+            gesture = torch.from_numpy(gesture).float()
+            gesture = torch.unsqueeze(gesture, dim=0)
+            gesture = gesture.to(device)
+            lnd = live_feed.extract_landmarks(frame, frame_number=num_frames_processed)
+            # Drop the row from extracted_data before concatenating
+            extracted_data = extracted_data.drop(extracted_data.index[0])
+            extracted_data = pd.concat([extracted_data, lnd])
+
+            current_time = time.time()   # Get the current time
+            if current_time - last_prediction_time >= 1:   # If at least 1 second has passed
+                with torch.no_grad():
+                    output = model(gesture)
+                    probabilities = torch.nn.functional.softmax(output, dim=1)
+                    predicted_class = torch.argmax(probabilities)
+                    print(predicted_class.item())
+
+                    # Update the last prediction time to the current time
+                    last_prediction_time = current_time
+
 
     num_frames_processed += 1
     # displaying frame
